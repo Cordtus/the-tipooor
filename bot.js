@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
-const RedisSession = require('telegraf-session-redis');
+const LocalSession = require('telegraf-session-local');
 const { createLogger, format, transports } = require('winston');
 const handlers = require('./handlers');
 
@@ -21,34 +21,34 @@ logger.info('Starting bot...');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+const localSession = new LocalSession({ database: 'session_db.json' });
+
+const allowedGroupId = process.env.ALLOWED_GROUP_ID;
+
+bot.use(localSession.middleware());
+
 bot.use((ctx, next) => {
   logger.info(`Received update of type: ${ctx.updateType}`);
   return next();
 });
 
-// Use the existing Redis server on port 6379
-const session = new RedisSession({
-  store: { port: 6379, host: '127.0.0.1' }
-});
-
-const allowedGroupId = process.env.ALLOWED_GROUP_ID;
-
-bot.use(session.middleware());
-
 bot.use((ctx, next) => {
   if (ctx.chat) {
     logger.info(`Message from chat: ${ctx.chat.id}`);
     if (ctx.chat.id.toString() === allowedGroupId) {
+      logger.info(`Message is from the allowed group: ${allowedGroupId}`);
       return next();
     } else {
-      logger.info(`Leaving chat: ${ctx.chat.id}`);
+      logger.info(`Message is not from the allowed group: ${ctx.chat.id}`);
       return ctx.leaveChat();  // Make the bot leave any other chat
     }
   }
+  return next();
 });
 
 bot.on('text', (ctx) => {
   logger.info(`Received a text message in chat ${ctx.chat.id}: ${ctx.message.text}`);
+  ctx.reply('Message received');
 });
 
 // Register command handlers

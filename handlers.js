@@ -5,7 +5,7 @@ async function registerHandlers(bot) {
   bot.command('faucet', async (ctx) => {
     botLogger.info(`Faucet command received from user: ${ctx.from.id}`);
     const userId = ctx.from.id.toString();
-    const userSession = await ctx.session;
+    const userSession = ctx.session;
 
     const currentTime = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -107,7 +107,7 @@ async function registerHandlers(bot) {
     }
 
     const vouchedUserId = vouchedUser.user.id.toString();
-    const vouchedUserSession = await ctx.getSession(vouchedUserId);
+    const vouchedUserSession = ctx.getSession(vouchedUserId);
 
     if (!vouchedUserSession.pendingRequest) {
       return ctx.reply('The mentioned user has not requested tokens in the last 24 hours or has already been vouched for.');
@@ -141,3 +141,4 @@ async function registerHandlers(bot) {
 module.exports = {
   registerHandlers
 };
+
