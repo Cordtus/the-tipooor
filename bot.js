@@ -29,21 +29,23 @@ const allowedGroupId = process.env.ALLOWED_GROUP_ID;
 bot.use(session.middleware());
 
 bot.use((ctx, next) => {
-  logger.info(`Message from chat: ${ctx.chat.id}`);
-  if (ctx.chat && ctx.chat.id.toString() === allowedGroupId) {
-    return next();
-  } else {
-    logger.info(`Leaving chat: ${ctx.chat.id}`);
-    return ctx.leaveChat();  // Make the bot leave any other chat
+  if (ctx.chat) {
+    logger.info(`Message from chat: ${ctx.chat.id}`);
+    if (ctx.chat.id.toString() === allowedGroupId) {
+      return next();
+    } else {
+      logger.info(`Leaving chat: ${ctx.chat.id}`);
+      return ctx.leaveChat();  // Make the bot leave any other chat
+    }
   }
+});
+
+bot.on('text', (ctx) => {
+  logger.info(`Received a text message in chat ${ctx.chat.id}: ${ctx.message.text}`);
 });
 
 // Register command handlers
 handlers.registerHandlers(bot);
-
-bot.on('text', (ctx) => {
-  logger.info(`Received a text message: ${ctx.message.text}`);
-});
 
 bot.launch()
   .then(() => logger.info('Bot started'))
