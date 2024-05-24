@@ -17,7 +17,14 @@ const logger = createLogger({
   ]
 });
 
+logger.info('Starting bot...');
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
+
+bot.use((ctx, next) => {
+  logger.info(`Received update of type: ${ctx.updateType}`);
+  return next();
+});
 
 // Use the existing Redis server on port 6379
 const session = new RedisSession({
