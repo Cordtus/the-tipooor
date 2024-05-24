@@ -3,6 +3,7 @@ const { botLogger, txLogger } = require('./logger');
 
 async function registerHandlers(bot) {
   bot.command('faucet', async (ctx) => {
+    botLogger.info(`Faucet command received from user: ${ctx.from.id}`);
     const userId = ctx.from.id.toString();
     const userSession = await ctx.session;
 
@@ -13,11 +14,13 @@ async function registerHandlers(bot) {
     if (userSession.lastClaim && currentTime - userSession.lastClaim < twentyFourHours) {
       userSession.pendingRequest = true;
       userSession.requestTime = currentTime;
+      botLogger.info(`User ${userId} already claimed tokens in the last 24 hours.`);
       return ctx.reply('You have already received tokens in the past 24 hours. If someone vouches for you using /vouch @yourusername, you can receive tokens again.');
     }
 
     const messageParts = ctx.message.text.split(' ');
     if (messageParts.length < 2) {
+      botLogger.info(`User ${userId} did not provide an address.`);
       return ctx.reply('Please provide an osmo wallet address. Usage: /faucet osmo1...').then(sentMessage => {
         ctx.session.awaitingAddress = true;
       });
@@ -25,6 +28,7 @@ async function registerHandlers(bot) {
 
     const address = messageParts[1];
     if (!address.startsWith('osmo1')) {
+      botLogger.info(`User ${userId} provided an invalid address: ${address}`);
       return ctx.reply('Invalid address. Please provide a valid osmo address.');
     }
 
