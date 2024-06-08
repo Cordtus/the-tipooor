@@ -6,3 +6,5 @@ node_modules/
 .eslintcache
 .env
 .next
+dist/
+data/
