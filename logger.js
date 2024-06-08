@@ -1,23 +1,29 @@
+// logger.js
 const { createLogger, format, transports } = require('winston');
-const path = require('path');
 
-const logsDir = path.join(__dirname, 'logs');
-
-// Ensure logs directory exists
-const fs = require('fs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir);
-}
+const logger = createLogger({
+  level: 'debug',
+  format: format.combine(
+    format.timestamp(),
+    format.errors({ stack: true }),
+    format.printf(({ timestamp, level, message, stack }) => `${timestamp} [${level.toUpperCase()}]: ${stack || message}`)
+  ),
+  transports: [
+    new transports.Console(),
+    new transports.File({ filename: './data/bot.log' })
+  ]
+});
 
 const botLogger = createLogger({
   level: 'info',
   format: format.combine(
     format.timestamp(),
-    format.printf(({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}]: ${message}`)
+    format.errors({ stack: true }),
+    format.printf(({ timestamp, level, message, stack }) => `${timestamp} [${level.toUpperCase()}]: ${stack || message}`)
   ),
   transports: [
-    new transports.File({ filename: path.join(logsDir, 'bot.log') }),
-    new transports.Console()
+    new transports.Console(),
+    new transports.File({ filename: './data/bot.log' })
   ]
 });
 
@@ -25,14 +31,17 @@ const txLogger = createLogger({
   level: 'info',
   format: format.combine(
     format.timestamp(),
-    format.printf(({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}]: ${message}`)
+    format.errors({ stack: true }),
+    format.printf(({ timestamp, level, message, stack }) => `${timestamp} [${level.toUpperCase()}]: ${stack || message}`)
   ),
   transports: [
-    new transports.File({ filename: path.join(logsDir, 'tx.log') })
+    new transports.Console(),
+    new transports.File({ filename: './data/transactions.log' })
   ]
 });
 
 module.exports = {
+  logger,
   botLogger,
   txLogger
 };

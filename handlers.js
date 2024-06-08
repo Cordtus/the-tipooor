@@ -1,29 +1,35 @@
-const utils = require('./utils');
 const { botLogger, txLogger } = require('./logger');
+const utils = require('./utils');
 
 async function registerHandlers(bot) {
   bot.command('faucet', async (ctx) => {
-    botLogger.info(`Faucet command received from user: ${ctx.from.id}`);
+    botLogger.info(`Faucet command received from user: ${ctx.from.id} in group: ${ctx.chat.id}`);
     const userId = ctx.from.id.toString();
     const userSession = ctx.session;
 
     const currentTime = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
 
-    // Check if user has claimed in the last 24 hours
     if (userSession.lastClaim && currentTime - userSession.lastClaim < twentyFourHours) {
       userSession.pendingRequest = true;
       userSession.requestTime = currentTime;
       botLogger.info(`User ${userId} already claimed tokens in the last 24 hours.`);
-      return ctx.reply('You have already received tokens in the past 24 hours. If someone vouches for you using /vouch @yourusername, you can receive tokens again.');
+      return ctx.reply('You have already received tokens in the past 24 hours. If someone vouches for you using /vouch, you can receive tokens again.');
     }
 
     const messageParts = ctx.message.text.split(' ');
     if (messageParts.length < 2) {
       botLogger.info(`User ${userId} did not provide an address.`);
-      return ctx.reply('Please provide an osmo wallet address. Usage: /faucet osmo1...').then(sentMessage => {
-        ctx.session.awaitingAddress = true;
-      });
+      ctx.session.awaitingAddress = true;
+      ctx.reply('Please provide an osmo wallet address. Usage: /faucet osmo1...');
+      setTimeout(() => {
+        if (ctx.session.awaitingAddress) {
+          ctx.session.awaitingAddress = false;
+          botLogger.info(`Cleared awaiting address state for user ${userId} due to timeout.`);
+          ctx.reply('Request timed out. Please try again.');
+        }
+      }, 10000);
+      return;
     }
 
     const address = messageParts[1];
@@ -32,84 +38,81 @@ async function registerHandlers(bot) {
       return ctx.reply('Invalid address. Please provide a valid osmo address.');
     }
 
-    // Process the transaction
     try {
+      botLogger.info(`Processing transaction for address: ${address}`);
       const wallet = await utils.initWallet();
       const result = await utils.sendTokens(wallet, address);
       if (result.code !== 0) {
         txLogger.error(`Failed transaction for ${address}: ${JSON.stringify(result)}`);
+        if (result.rawLog.includes("out of gas")) {
+          return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+        }
         return ctx.reply('Failed to send tokens. Please try again later.');
+      }
+      if (result.indexingWarning) {
+        botLogger.warn(`Transaction indexing is disabled, assuming success.`);
+        return ctx.reply('Tokens sent successfully, but transaction indexing is disabled. Please verify the transaction manually.');
       }
       ctx.session.lastClaim = currentTime;
       ctx.session.pendingRequest = false;
-      txLogger.info(`Successfully sent 10 tokens to ${address}. Transaction hash: ${result.transactionHash}`);
-      const explorerLink = `https://chainsco.pe/osmosis/tx/${result.transactionHash}`;
+      botLogger.info(`Successfully sent 10 tokens to ${address}. Transaction hash: ${result.transactionHash}`);
+      const explorerLink = `https://celatone.osmosis.zone/osmo-test-5/txs/${result.transactionHash}`;
       return ctx.reply(`Successfully sent 10 tokens to ${address}. [Transaction hash](${explorerLink})`, { parse_mode: 'Markdown' });
     } catch (error) {
       botLogger.error('Error sending tokens:', error);
+      if (error.message.includes("out of gas")) {
+        return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+      }
       return ctx.reply('Failed to send tokens. Please try again later.');
     }
   });
 
-  // Handle responses to address requests
   bot.on('text', async (ctx) => {
     if (ctx.session.awaitingAddress && ctx.message.text.startsWith('osmo1')) {
       ctx.session.awaitingAddress = false;
       const address = ctx.message.text;
 
       try {
+        botLogger.info(`Processing transaction for address (text response): ${address}`);
         const wallet = await utils.initWallet();
         const result = await utils.sendTokens(wallet, address);
         if (result.code !== 0) {
           txLogger.error(`Failed transaction for ${address}: ${JSON.stringify(result)}`);
+          if (result.rawLog.includes("out of gas")) {
+            return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+          }
           return ctx.reply('Failed to send tokens. Please try again later.');
         }
+        if (result.indexingWarning) {
+          botLogger.warn(`Transaction indexing is disabled, assuming success.`);
+          return ctx.reply('Tokens sent successfully, but transaction indexing is disabled. Please verify the transaction manually.');
+        }
         ctx.session.lastClaim = Date.now();
-        txLogger.info(`Successfully sent 10 tokens to ${address}. Transaction hash: ${result.transactionHash}`);
-        const explorerLink = `https://chainsco.pe/osmosis/tx/${result.transactionHash}`;
+        botLogger.info(`Successfully sent 10 tokens to ${address}. Transaction hash: ${result.transactionHash}`);
+        const explorerLink = `https://celatone.osmosis.zone/osmo-test-5/txs/${result.transactionHash}`;
         return ctx.reply(`Successfully sent 10 tokens to ${address}. [Transaction hash](${explorerLink})`, { parse_mode: 'Markdown' });
       } catch (error) {
         botLogger.error('Error sending tokens:', error);
+        if (error.message.includes("out of gas")) {
+          return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+        }
         return ctx.reply('Failed to send tokens. Please try again later.');
       }
     }
   });
 
-  // Advertise bot's wallet address and balance
-  bot.command('balance', async (ctx) => {
-    try {
-      const wallet = await utils.initWallet();
-      const balances = await utils.getBalances(wallet);
-      const address = (await wallet.getAccounts())[0].address;
-      let balanceMessage = `Bot's wallet address: ${address}\nBalances:\n`;
-      balances.forEach(balance => {
-        balanceMessage += `${balance.amount} ${balance.denom}\n`;
-      });
-      return ctx.reply(balanceMessage);
-    } catch (error) {
-      botLogger.error('Error fetching balances:', error);
-      return ctx.reply('Failed to fetch balances. Please try again later.');
-    }
-  });
-
-  // Vouch system
   bot.command('vouch', async (ctx) => {
-    const messageParts = ctx.message.text.split(' ');
-    if (messageParts.length < 2) {
-      return ctx.reply('Please mention the user you are vouching for. Usage: /vouch @username');
+    botLogger.info(`Vouch command received from user: ${ctx.from.id}`);
+    if (!ctx.message.reply_to_message) {
+      botLogger.info(`Vouch command not a reply, received from user: ${ctx.from.id}`);
+      return ctx.reply('Please reply to the message of the user you want to vouch for.');
     }
 
-    const vouchedUsername = messageParts[1].replace('@', '');
-    const vouchedUser = ctx.message.entities.find(entity => entity.type === 'mention' && entity.user.username === vouchedUsername);
-
-    if (!vouchedUser) {
-      return ctx.reply('Could not find the mentioned user.');
-    }
-
-    const vouchedUserId = vouchedUser.user.id.toString();
+    const vouchedUserId = ctx.message.reply_to_message.from.id.toString();
     const vouchedUserSession = ctx.getSession(vouchedUserId);
 
     if (!vouchedUserSession.pendingRequest) {
+      botLogger.info(`No pending request for user: ${vouchedUserId}`);
       return ctx.reply('The mentioned user has not requested tokens in the last 24 hours or has already been vouched for.');
     }
 
@@ -117,6 +120,7 @@ async function registerHandlers(bot) {
     const address = vouchedUserSession.awaitingAddress;
 
     if (!address || !address.startsWith('osmo1')) {
+      botLogger.info(`Invalid or no address found for vouched user: ${vouchedUserId}`);
       return ctx.reply('Invalid or no address found for the vouched user.');
     }
 
@@ -124,15 +128,25 @@ async function registerHandlers(bot) {
       const result = await utils.sendTokens(wallet, address);
       if (result.code !== 0) {
         txLogger.error(`Failed transaction for ${address} (vouched by ${ctx.from.username}): ${JSON.stringify(result)}`);
+        if (result.rawLog.includes("out of gas")) {
+          return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+        }
         return ctx.reply('Failed to send tokens. Please try again later.');
+      }
+      if (result.indexingWarning) {
+        botLogger.warn(`Transaction indexing is disabled, assuming success.`);
+        return ctx.reply('Tokens sent successfully, but transaction indexing is disabled. Please verify the transaction manually.');
       }
       vouchedUserSession.lastClaim = Date.now();
       vouchedUserSession.pendingRequest = false;
-      txLogger.info(`Successfully sent 10 tokens to ${address} for user @${vouchedUsername}. Transaction hash: ${result.transactionHash}`);
-      const explorerLink = `https://chainsco.pe/osmosis/tx/${result.transactionHash}`;
-      return ctx.reply(`Successfully sent 10 tokens to ${address} for user @${vouchedUsername}. [Transaction hash](${explorerLink})`, { parse_mode: 'Markdown' });
+      botLogger.info(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. Transaction hash: ${result.transactionHash}`);
+      const explorerLink = `https://celatone.osmosis.zone/osmo-test-5/txs/${result.transactionHash}`;
+      return ctx.reply(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. [Transaction hash](${explorerLink})`, { parse_mode: 'Markdown' });
     } catch (error) {
       botLogger.error('Error sending tokens:', error);
+      if (error.message.includes("out of gas")) {
+        return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+      }
       return ctx.reply('Failed to send tokens. Please try again later.');
     }
   });
@@ -141,4 +155,3 @@ async function registerHandlers(bot) {
 module.exports = {
   registerHandlers
 };
-

@@ -1,0 +1,4 @@
+{
+    "watch": ["src"],
+    "ignore": ["*.log", "node_modules", "data"]
+}

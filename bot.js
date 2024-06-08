@@ -1,29 +1,22 @@
+// bot.js
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const LocalSession = require('telegraf-session-local');
-const { createLogger, format, transports } = require('winston');
-const handlers = require('./handlers');
-
-// Setup logging
-const logger = createLogger({
-  level: 'info',
-  format: format.combine(
-    format.timestamp(),
-    format.printf(({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}]: ${message}`)
-  ),
-  transports: [
-    new transports.Console(),
-    new transports.File({ filename: 'bot.log' })
-  ]
-});
+const { logger } = require('./logger');
+const { registerHandlers } = require('./handlers');
 
 logger.info('Starting bot...');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const botToken = process.env.BOT_TOKEN;
+if (!botToken) {
+  throw new Error('BOT_TOKEN is not defined in the environment variables');
+}
+
+const bot = new Telegraf(botToken);
 
 const localSession = new LocalSession({ database: 'session_db.json' });
 
-const allowedGroupId = process.env.ALLOWED_GROUP_ID;
+const allowedGroupIds = (process.env.ALLOWED_GROUP_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
 
 bot.use(localSession.middleware());
 
@@ -35,24 +28,19 @@ bot.use((ctx, next) => {
 bot.use((ctx, next) => {
   if (ctx.chat) {
     logger.info(`Message from chat: ${ctx.chat.id}`);
-    if (ctx.chat.id.toString() === allowedGroupId) {
-      logger.info(`Message is from the allowed group: ${allowedGroupId}`);
+    if (allowedGroupIds.includes(ctx.chat.id.toString())) {
+      logger.info(`Message is from an allowed group: ${ctx.chat.id}`);
       return next();
     } else {
-      logger.info(`Message is not from the allowed group: ${ctx.chat.id}`);
-      return ctx.leaveChat();  // Make the bot leave any other chat
+      logger.info(`Message is not from an allowed group: ${ctx.chat.id}`);
+      return ctx.reply(`Sorry, I am only allowed to operate in the groups with IDs: ${allowedGroupIds.join(', ')}`);
     }
   }
   return next();
 });
 
-bot.on('text', (ctx) => {
-  logger.info(`Received a text message in chat ${ctx.chat.id}: ${ctx.message.text}`);
-  ctx.reply('Message received');
-});
-
 // Register command handlers
-handlers.registerHandlers(bot);
+registerHandlers(bot);
 
 bot.launch()
   .then(() => logger.info('Bot started'))

@@ -1,0 +1,29 @@
+{
+  "name": "the-tipooor",
+  "version": "1.0.0",
+  "description": "A Telegram bot for handling transactions on the Osmosis blockchain",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon --exec 'node -r dotenv/config' bot.js",
+    "build": "echo 'No build step needed for JavaScript'"
+  },
+  "dependencies": {
+    "@cosmjs/amino": "^0.32.3",
+    "@cosmjs/proto-signing": "^0.32.3",
+    "@cosmjs/stargate": "^0.32.3",
+    "@grpc/grpc-js": "^1.10.8",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "grpc": "^1.24.11",
+    "long": "^5.2.3",
+    "telegraf": "^4.16.3",
+    "telegraf-session-local": "^2.1.1",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.2"
+  },
+  "author": "Your Name",
+  "license": "ISC"
+}

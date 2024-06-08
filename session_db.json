@@ -1,0 +1,19 @@
+{
+  "sessions": [
+    {
+      "id": "-1001895651420:1705203106",
+      "data": {
+        "awaitingAddress": false
+      }
+    },
+    {
+      "id": "-1002075185137:1705203106",
+      "data": {
+        "awaitingAddress": false,
+        "lastClaim": 1717829146342,
+        "pendingRequest": true,
+        "requestTime": 1717829308678
+      }
+    }
+  ]
+}
