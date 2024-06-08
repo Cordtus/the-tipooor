@@ -8,5 +8,5 @@ node_modules/
 .next
 dist/
 data/
-.nodemon.json
+nodemon.json
 session_db.json
