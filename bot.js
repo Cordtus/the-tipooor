@@ -1,4 +1,3 @@
-// bot.js
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const LocalSession = require('telegraf-session-local');
@@ -14,7 +13,14 @@ if (!botToken) {
 
 const bot = new Telegraf(botToken);
 
-const localSession = new LocalSession({ database: 'session_db.json' });
+const localSession = new LocalSession({
+  database: 'session_db.json',
+  storage: LocalSession.storageFileAsync,
+  format: {
+    serialize: (value) => JSON.stringify(value, (key, val) => (typeof val === 'bigint' ? val.toString() : val)),
+    deserialize: (value) => JSON.parse(value, (key, val) => (typeof val === 'string' && /^\d+n$/.test(val) ? BigInt(val.slice(0, -1)) : val))
+  }
+});
 
 const allowedGroupIds = (process.env.ALLOWED_GROUP_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
 

@@ -7,14 +7,26 @@ async function registerHandlers(bot) {
   bot.command('faucet', async (ctx) => {
     botLogger.info(`Faucet command received from user: ${ctx.from.id} in group: ${ctx.chat.id}`);
     const userId = ctx.from.id.toString();
-    const userSession = ctx.session;
+    const sessions = ctx.session;
 
     const currentTime = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
 
     // Check if the user is whitelisted
     if (!WHITELISTED_USER_IDS.includes(userId)) {
-      if (userSession.lastClaim && currentTime - userSession.lastClaim < twentyFourHours) {
+      // Check across all sessions if the user has claimed tokens in the last 24 hours
+      let hasClaimed = false;
+      for (const session of Object.values(sessions)) {
+        if (session.data && session.data.lastClaim && session.id.includes(userId)) {
+          if (currentTime - session.data.lastClaim < twentyFourHours) {
+            hasClaimed = true;
+            break;
+          }
+        }
+      }
+
+      if (hasClaimed) {
+        const userSession = sessions[`${ctx.chat.id}:${userId}`];
         userSession.pendingRequest = true;
         userSession.requestTime = currentTime;
         botLogger.info(`User ${userId} already claimed tokens in the last 24 hours.`);
@@ -108,16 +120,42 @@ async function registerHandlers(bot) {
 
   bot.command('vouch', async (ctx) => {
     botLogger.info(`Vouch command received from user: ${ctx.from.id}`);
+    console.log(`Vouch command received from user: ${ctx.from.id}`);
+    
     if (!ctx.message.reply_to_message) {
       botLogger.info(`Vouch command not a reply, received from user: ${ctx.from.id}`);
+      console.log(`Vouch command not a reply, received from user: ${ctx.from.id}`);
       return ctx.reply('Please reply to the message of the user you want to vouch for.');
     }
 
     const vouchedUserId = ctx.message.reply_to_message.from.id.toString();
-    const vouchedUserSession = ctx.getSession(vouchedUserId);
+    const messageId = ctx.message.message_id;
+    const repliedMessageId = ctx.message.reply_to_message.message_id;
 
-    if (!vouchedUserSession.pendingRequest) {
+    botLogger.info(`Vouch command details: userId ${ctx.from.id}, messageId ${messageId}, repliedMessageId ${repliedMessageId}`);
+    console.log(`Vouch command details: userId ${ctx.from.id}, messageId ${messageId}, repliedMessageId ${repliedMessageId}`);
+
+    if (vouchedUserId === ctx.from.id.toString()) {
+      botLogger.info(`User ${ctx.from.id} cannot vouch for themselves.`);
+      console.log(`User ${ctx.from.id} cannot vouch for themselves.`);
+      return ctx.reply('You cannot vouch for yourself.');
+    }
+
+    // Find the session for the vouched user across all chats
+    const vouchedUserSessions = Object.values(ctx.session).filter(session => session.id.includes(vouchedUserId));
+    let vouchedUserSession = null;
+    for (const session of vouchedUserSessions) {
+      if (session.data && session.data.pendingRequest) {
+        vouchedUserSession = session.data;
+        break;
+      }
+    }
+
+    console.log(`Vouched user session: ${JSON.stringify(vouchedUserSession)}`);
+
+    if (!vouchedUserSession || !vouchedUserSession.pendingRequest) {
       botLogger.info(`No pending request for user: ${vouchedUserId}`);
+      console.log(`No pending request for user: ${vouchedUserId}`);
       return ctx.reply('The mentioned user has not requested tokens in the last 24 hours or has already been vouched for.');
     }
 
@@ -126,6 +164,7 @@ async function registerHandlers(bot) {
 
     if (!address || !address.startsWith('osmo1')) {
       botLogger.info(`Invalid or no address found for vouched user: ${vouchedUserId}`);
+      console.log(`Invalid or no address found for vouched user: ${vouchedUserId}`);
       return ctx.reply('Invalid or no address found for the vouched user.');
     }
 
@@ -133,6 +172,7 @@ async function registerHandlers(bot) {
       const result = await utils.sendTokens(wallet, address);
       if (result.code !== 0) {
         txLogger.error(`Failed transaction for ${address} (vouched by ${ctx.from.username}): ${JSON.stringify(result)}`);
+        console.log(`Failed transaction for ${address} (vouched by ${ctx.from.username}): ${JSON.stringify(result)}`);
         if (result.rawLog.includes("out of gas")) {
           return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
         }
@@ -140,15 +180,19 @@ async function registerHandlers(bot) {
       }
       if (result.indexingWarning) {
         botLogger.warn(`Transaction indexing is disabled, assuming success.`);
+        console.log(`Transaction indexing is disabled, assuming success.`);
         return ctx.reply('Tokens sent successfully, but transaction indexing is disabled. Please verify the transaction manually.');
       }
       vouchedUserSession.lastClaim = Date.now();
       vouchedUserSession.pendingRequest = false;
+      vouchedUserSession.awaitingAddress = false;
       botLogger.info(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. Transaction hash: ${result.transactionHash}`);
+      console.log(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. Transaction hash: ${result.transactionHash}`);
       const explorerLink = `https://celatone.osmosis.zone/osmo-test-5/txs/${result.transactionHash}`;
       return ctx.reply(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. [Transaction hash](${explorerLink})`, { parse_mode: 'Markdown' });
     } catch (error) {
       botLogger.error('Error sending tokens:', error);
+      console.log('Error sending tokens:', error);
       if (error.message.includes("out of gas")) {
         return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
       }
