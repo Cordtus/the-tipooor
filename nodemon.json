@@ -1,4 +1,4 @@
 {
-    "watch": ["src"],
+    "watch": ["utils.js","handlers.js", "logger.js", "bot.js"],
     "ignore": ["*.log", "node_modules", "data"]
 }

@@ -3,16 +3,37 @@
     {
       "id": "-1001895651420:1705203106",
       "data": {
-        "awaitingAddress": false
+        "awaitingAddress": false,
+        "lastClaim": 1717869954775
       }
     },
     {
       "id": "-1002075185137:1705203106",
       "data": {
         "awaitingAddress": false,
-        "lastClaim": 1717829146342,
-        "pendingRequest": true,
-        "requestTime": 1717829308678
+        "lastClaim": 1717895667268,
+        "pendingRequest": false,
+        "requestTime": 1717895084714
+      }
+    },
+    {
+      "id": "-1001895651420:1721840238",
+      "data": {
+        "lastClaim": 1717870068506,
+        "pendingRequest": false
+      }
+    },
+    {
+      "id": "-1002075185137:498232899",
+      "data": {
+        "awaitingAddress": false
+      }
+    },
+    {
+      "id": "-1002075185137:577642932",
+      "data": {
+        "lastClaim": 1717897767894,
+        "pendingRequest": false
       }
     }
   ]

@@ -21,9 +21,11 @@ if (!rpcUrl || !lcdUrl || !chainId || !process.env.FAUCET_MNEMONIC || !process.e
 
 async function initWallet() {
   botLogger.info('Initializing wallet with provided mnemonic');
+  console.log('Initializing wallet with provided mnemonic');
   const wallet = await DirectSecp256k1HdWallet.fromMnemonic(process.env.FAUCET_MNEMONIC, { prefix: 'osmo' });
   const [firstAccount] = await wallet.getAccounts();
   botLogger.info(`Initialized wallet address: ${firstAccount.address}`);
+  console.log(`Initialized wallet address: ${firstAccount.address}`);
   return wallet;
 }
 
@@ -31,13 +33,15 @@ async function getMinGasPrice() {
   try {
     const url = `${lcdUrl}/osmosis/txfees/v1beta1/cur_eip_base_fee`;
     botLogger.info(`Sending request to get minimum gas price from ${url}`);
+    console.log(`Sending request to get minimum gas price from ${url}`);
     const response = await axios.get(url);
     const baseFee = parseFloat(response.data.base_fee);
     botLogger.info(`Base fee response: ${JSON.stringify(response.data)}`);
-    console.log(`Base fee: ${baseFee}`);
+    console.log(`Base fee response: ${JSON.stringify(response.data)}`);
     return baseFee;
   } catch (error) {
     botLogger.error('Error fetching minimum gas price:', error);
+    console.error('Error fetching minimum gas price:', error);
     throw new Error('Failed to fetch minimum gas price');
   }
 }
@@ -45,19 +49,33 @@ async function getMinGasPrice() {
 async function simulateTransaction(client, firstAccount, messages, memo) {
   try {
     botLogger.info(`Simulating transaction with messages: ${JSON.stringify(messages)}`);
+    console.log(`Simulating transaction with messages: ${JSON.stringify(messages)}`);
     const simulatedResult = await client.simulate(firstAccount.address, messages, memo);
     botLogger.info(`Simulated result: ${JSON.stringify(simulatedResult)}`);
-    console.log(`Full simulated result: ${JSON.stringify(simulatedResult, null, 2)}`);
+    console.log(`Simulated result: ${JSON.stringify(simulatedResult)}`);
 
     // Extract gas used directly from the simulated result
-    const gasUsed = simulatedResult.gas_info ? simulatedResult.gas_info.gas_used : simulatedResult;
+    let gasUsed;
+    if (simulatedResult && simulatedResult.gas_info && simulatedResult.gas_info.gas_used) {
+      gasUsed = simulatedResult.gas_info.gas_used;
+    } else if (simulatedResult && simulatedResult.gasUsed) {
+      gasUsed = simulatedResult.gasUsed;
+    } else if (typeof simulatedResult === 'number') {
+      gasUsed = simulatedResult;
+    } else {
+      gasUsed = simulatedResult;  // Assuming the simulated result is the gas used value directly
+    }
+
+    botLogger.info(`Extracted gas used: ${gasUsed}`);
     console.log(`Extracted gas used: ${gasUsed}`);
+
     if (!gasUsed) {
       throw new Error(`Gas used not found in simulated result: ${JSON.stringify(simulatedResult)}`);
     }
     return gasUsed;
   } catch (error) {
     botLogger.error('Error simulating transaction:', error);
+    console.error('Error simulating transaction:', error);
     throw new Error('Failed to simulate transaction');
   }
 }
@@ -66,6 +84,7 @@ async function sendTokens(wallet, recipientAddress) {
   try {
     const [firstAccount] = await wallet.getAccounts();
     botLogger.info(`Sending tokens from ${firstAccount.address} to ${recipientAddress}`);
+    console.log(`Sending tokens from ${firstAccount.address} to ${recipientAddress}`);
 
     const client = await SigningStargateClient.connectWithSigner(rpcUrl, wallet);
 
@@ -79,9 +98,13 @@ async function sendTokens(wallet, recipientAddress) {
     }];
 
     const baseFee = await getMinGasPrice();
+    console.log(`Fetched base fee: ${baseFee}`);
     const gasEstimation = await simulateTransaction(client, firstAccount, messages, memo);
-    const gasLimit = Math.ceil(gasEstimation * 1.15); // Add a 15% buffer to the estimated gas
+    console.log(`Gas estimation returned: ${gasEstimation}`);
+    const gasLimit = Math.ceil(gasEstimation * 1.15); // Adding 15% buffer
+    console.log(`Gas estimation: ${gasEstimation}, Gas limit: ${gasLimit}`);
     const feeAmountValue = Math.ceil(gasLimit * baseFee);
+    console.log(`Calculated fee amount value: ${feeAmountValue}`);
     const feeAmount = {
       denom: 'uosmo',
       amount: feeAmountValue.toString(),
@@ -92,8 +115,10 @@ async function sendTokens(wallet, recipientAddress) {
     };
 
     botLogger.info(`Sending transaction with fee: ${JSON.stringify(fee)}`);
+    console.log(`Sending transaction with fee: ${JSON.stringify(fee)}`);
     const result = await client.sendTokens(firstAccount.address, recipientAddress, [faucetAmount], fee, memo);
 
+    console.log(`Transaction result: ${JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value)}`);
     if (result.code === 0) {
       txLogger.info(`Broadcasted transaction: ${result.transactionHash}`);
       console.log(`Broadcasted transaction: ${result.transactionHash}`);
@@ -107,18 +132,17 @@ async function sendTokens(wallet, recipientAddress) {
       };
     } else {
       txLogger.error(`Transaction failed with code ${result.code}: ${result.rawLog}`);
+      console.error(`Transaction failed with code ${result.code}: ${result.rawLog}`);
       throw new Error(`Transaction failed with code ${result.code}`);
     }
   } catch (error) {
     if (error.message.includes("transaction indexing is disabled")) {
       txLogger.warn(`Transaction indexing is disabled, assuming success.`);
-      return { code: 0, message: error.message, indexingWarning: true };
-    } else if (error.message.includes("out of gas")) {
-      txLogger.error(`Transaction failed due to out of gas: ${error.message}`);
-      throw new Error('Transaction failed due to out of gas. Please increase the gas limit.');
+      console.warn(`Transaction indexing is disabled, assuming success.`);
+      return { code: 0, message: error.message };
     }
     txLogger.error(`Error sending tokens: ${error}`);
-    console.log(`Error sending tokens: ${error}`);
+    console.error(`Error sending tokens: ${error}`);
     throw error;
   }
 }

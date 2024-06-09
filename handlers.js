@@ -1,6 +1,8 @@
 const { botLogger, txLogger } = require('./logger');
 const utils = require('./utils');
 
+const WHITELISTED_USER_IDS = ['1705203106']; // Add the specific user ID(s) here
+
 async function registerHandlers(bot) {
   bot.command('faucet', async (ctx) => {
     botLogger.info(`Faucet command received from user: ${ctx.from.id} in group: ${ctx.chat.id}`);
@@ -10,11 +12,14 @@ async function registerHandlers(bot) {
     const currentTime = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
 
-    if (userSession.lastClaim && currentTime - userSession.lastClaim < twentyFourHours) {
-      userSession.pendingRequest = true;
-      userSession.requestTime = currentTime;
-      botLogger.info(`User ${userId} already claimed tokens in the last 24 hours.`);
-      return ctx.reply('You have already received tokens in the past 24 hours. If someone vouches for you using /vouch, you can receive tokens again.');
+    // Check if the user is whitelisted
+    if (!WHITELISTED_USER_IDS.includes(userId)) {
+      if (userSession.lastClaim && currentTime - userSession.lastClaim < twentyFourHours) {
+        userSession.pendingRequest = true;
+        userSession.requestTime = currentTime;
+        botLogger.info(`User ${userId} already claimed tokens in the last 24 hours.`);
+        return ctx.reply('You have already received tokens in the past 24 hours. If someone vouches for you using /vouch, you can receive tokens again.');
+      }
     }
 
     const messageParts = ctx.message.text.split(' ');
