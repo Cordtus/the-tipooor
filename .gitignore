@@ -6,6 +6,7 @@ node_modules/
 .eslintcache
 .env
 .next
+session_db.json
 dist/
 data/
 nodemon.json
