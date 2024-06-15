@@ -54,7 +54,7 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
     botLogger.info(`Simulated result: ${JSON.stringify(simulatedResult)}`);
     console.log(`Simulated result: ${JSON.stringify(simulatedResult)}`);
 
-    // Extract gas used directly from the simulated result
+    // extract gas used directly from the simulated result
     let gasUsed;
     if (simulatedResult && simulatedResult.gas_info && simulatedResult.gas_info.gas_used) {
       gasUsed = simulatedResult.gas_info.gas_used;
@@ -63,7 +63,7 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
     } else if (typeof simulatedResult === 'number') {
       gasUsed = simulatedResult;
     } else {
-      gasUsed = simulatedResult;  // Assuming the simulated result is the gas used value directly
+      gasUsed = simulatedResult;
     }
 
     botLogger.info(`Extracted gas used: ${gasUsed}`);
