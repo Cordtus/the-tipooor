@@ -1,4 +1,4 @@
 {
-    "watch": ["utils.js","handlers.js", "logger.js", "bot.js", ".env"],
+    "watch": ["utils.js","handlers.js", "logger.js", "bot.js", ".env", "sessionManager.js"],
     "ignore": ["*.log", "node_modules", "data"]
 }

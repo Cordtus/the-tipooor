@@ -1,8 +1,8 @@
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
-const LocalSession = require('telegraf-session-local');
 const { logger } = require('./logger');
 const { registerHandlers } = require('./handlers');
+const { loadSessionData } = require('./sessionManager');
 
 logger.info('Starting bot...');
 
@@ -13,18 +13,7 @@ if (!botToken) {
 
 const bot = new Telegraf(botToken);
 
-const localSession = new LocalSession({
-  database: 'session_db.json',
-  storage: LocalSession.storageFileAsync,
-  format: {
-    serialize: (value) => JSON.stringify(value, (key, val) => (typeof val === 'bigint' ? val.toString() : val)),
-    deserialize: (value) => JSON.parse(value, (key, val) => (typeof val === 'string' && /^\d+n$/.test(val) ? BigInt(val.slice(0, -1)) : val))
-  }
-});
-
 const allowedGroupIds = (process.env.ALLOWED_GROUP_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
-
-bot.use(localSession.middleware());
 
 bot.use((ctx, next) => {
   logger.info(`Received update of type: ${ctx.updateType}`);
@@ -44,6 +33,9 @@ bot.use((ctx, next) => {
   }
   return next();
 });
+
+// Load session data on startup
+loadSessionData();
 
 // Register command handlers
 registerHandlers(bot);
