@@ -102,7 +102,7 @@ Conditions:
 
 ### 'Vouch' for other users
 
-However, sometimes the limits are too low and this can become a barrier to development. In order to bypass this limit, one user can "vouch" for another using the `/vouch` commmand.
+Sometimes the limits are too low, and can become a barrier to development. To bypass this limit, one user can "vouch" for another using the `/vouch` commmand.
 To do this, simply reply `/vouch` to the (denied) `/faucet` request message of another user and it will send another serving of tokens to the wallet they requested for.
 
 Conditions:
