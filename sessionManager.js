@@ -1,3 +1,5 @@
+// sessionManager.js
+
 const fs = require('fs');
 const path = require('path');
 const { botLogger } = require('./logger');
@@ -170,7 +172,9 @@ async function handleVouchCommand(ctx, utils) {
         vouchedUserSession.data.pendingRequest = false;
         vouchedUserSession.data.awaitingAddress = false;
         saveSessionData();
-        const explorerLink = result.explorerLink || "https://celatone.osmosis.zone/osmo-test-5";
+        const explorerLink = result.transactionHash ? 
+          `https://celatone.osmosis.zone/osmo-test-5/txs/${result.transactionHash}` : 
+          'https://celatone.osmosis.zone/osmo-test-5';
         return ctx.reply(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. [Transaction details](${explorerLink})`, { parse_mode: 'Markdown' });
       } else {
         throw new Error('Failed to send tokens. Please try again later.');
@@ -194,6 +198,10 @@ module.exports = {
   handleVouchCommand,
   isAddressValid,
   loadSessionData,
-  getSession, // Export getSession
-  saveSessionData // Export saveSessionData
+  getSession,
+  saveSessionData,
+  isWhitelisted,
+  hasUserClaimedRecently,
+  hasAddressReceivedRecently,
+  setPendingRequest,
 };

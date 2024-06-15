@@ -1,9 +1,11 @@
+// utils.js
+
 require('dotenv').config();
 const axios = require('axios');
 const { DirectSecp256k1HdWallet } = require('@cosmjs/proto-signing');
 const { SigningStargateClient } = require('@cosmjs/stargate');
 const { botLogger, txLogger } = require('./logger');
-const { getSession, saveSessionData } = require('./sessionManager'); // Import the functions
+const { getSession, saveSessionData } = require('./sessionManager');
 
 const faucetAmount = {
   denom: process.env.DENOM,

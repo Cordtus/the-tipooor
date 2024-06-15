@@ -57,12 +57,12 @@
       "id": "-1002016686119:1705203106",
       "data": {
         "awaitingAddress": false,
-        "lastClaim": 1718430901468,
+        "lastClaim": 1718431268968,
         "pendingRequest": true,
-        "requestTime": 1718430917675,
+        "requestTime": 1718431274343,
         "pendingAddress": "osmo1rveyugdcfa6g7jwdvz2m875rw4u09svphpp5y7",
         "lastReceived": {
-          "osmo1rveyugdcfa6g7jwdvz2m875rw4u09svphpp5y7": 1718430901468
+          "osmo1rveyugdcfa6g7jwdvz2m875rw4u09svphpp5y7": 1718431268968
         }
       }
     }

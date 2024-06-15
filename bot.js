@@ -1,3 +1,5 @@
+// bot.js
+
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const { logger } = require('./logger');

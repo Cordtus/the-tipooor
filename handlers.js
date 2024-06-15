@@ -1,6 +1,8 @@
+// handlers.js
+
 const { botLogger, txLogger } = require('./logger');
 const utils = require('./utils');
-const { handleFaucetCommand, handleVouchCommand, isAddressValid } = require('./sessionManager');
+const { handleFaucetCommand, handleVouchCommand, isAddressValid, getSession, saveSessionData } = require('./sessionManager');
 
 async function registerHandlers(bot) {
   bot.command('faucet', async (ctx) => {
@@ -8,17 +10,19 @@ async function registerHandlers(bot) {
   });
 
   bot.on('text', async (ctx) => {
-    if (ctx.session.awaitingAddress && isAddressValid(ctx.message.text)) {
-      ctx.session.awaitingAddress = false;
+    const session = getSession(`${ctx.chat.id}:${ctx.from.id}`);
+    if (session.data.awaitingAddress && isAddressValid(ctx.message.text)) {
+      session.data.awaitingAddress = false;
       const address = ctx.message.text;
 
       try {
         botLogger.info(`Processing transaction for address (text response): ${address}`);
-        await utils.processFaucetRequest(ctx, ctx.from.id, address);
+        await utils.processFaucetRequest(ctx, `${ctx.chat.id}:${ctx.from.id}`, address);
       } catch (error) {
         botLogger.error('Error processing faucet request:', error);
         return ctx.reply('Failed to send tokens. Please try again later.');
       }
+      saveSessionData();
     }
   });
 
