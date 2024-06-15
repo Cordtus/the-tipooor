@@ -1,15 +1,92 @@
 # the-tipooor
-Telegram faucet bot for Cosmos SDK chains. Built to be simple fast and provide excellent console logs for debugging and error tracking. Uses an RPC + REST endpoint for querying and broadcasting transactions.
+Telegram faucet bot for Cosmos SDK chains. Runs in [nodeJS](https://nodejs.org/en) using [yarn](https://yarnpkg.com/). Built with new or non-developers in mind, 
+simple to configure and use, provides extensive logging [Default full process + tx logs to console and file] for debugging.
+Uses tendermint RPC + REST endpoint [one of each] for querying and broadcasting transactions.
 
 ## Setup
 
-### Initial setup & development/testing
-Clone the repo and install required modules
+### Initial setup, config & development + production mode
+
+#### Clone this repo
 
 ```shell
-git clone https://github.com/Cordtus/the-tipooor.git && cd the-tipooor
-yarn && yarn dev
+cd && git clone https://github.com/Cordtus/the-tipooor.git
 ```
+
+#### Install packages & dependencies
+
+```shell
+cd the-tipooor
+yarn add @cosmjs/proto-signing @cosmjs/stargate axios dotenv telegraf winston
+yarn add -D nodemon
+```
+
+#### Create `.env` file
+
+Create a file in the root of the directory labelled '.env'
+`nano ./.env`
+
+Add mnemonic, bot API key etc. 
+(**do not** use an existing wallet.. create a new one specifically for the bot)
+
+```shell
+BOT_TOKEN='api_key_from_telegram_botfather'
+GRPC_URL='not_currently_used'
+RPC_URL='required'
+LCD_URL='required'
+FAUCET_MNEMONIC=""
+CHAIN_ID='osmo-test-5'
+DENOM='uosmo'
+ALLOWED_GROUP_IDS='group_id,another_group_id'
+WHITELISTED_USER_IDS='user_id,another_user_id'
+FAUCET_TIMEOUT_HOURS='12'
+```
+
+*ensure the `.gitignore` file in this directory contains `.env` so this file does not get pushed to github when it contains your mnemonic + bot API key!*
+
+*to-add* - move configurables to dedicated config file
+
+#### Run the bot
+
+For development & testing, run with `yarn dev`.
+Bot will restart upon changes to any of the working files.
+
+To run normally, run with `yarn start`
+
+To run as a persistent service, create a *systemd* service file
+
+```bash
+#!/bin/bash
+
+sudo tee /etc/systemd/system/faucetbot.service > /dev/null <<EOL
+[Unit]
+Description=OsmoFaucet
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/node $HOME/repos/the-tipooor/bot.js
+Restart=always
+User=$USER
+Environment=PATH=/usr/bin:/usr/local/bin
+Environment=NODE_ENV=production
+WorkingDirectory=$HOME/repos/the-tipooor
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
+# Reload systemd and enable the service
+sudo systemctl daemon-reload
+sudo systemctl start faucetbot.service
+sudo systemctl enable faucetbot.service
+```
+
+## Using the bot
+
+After the bot is set up and configured, add your bot to a telegram group [don't forget to add the chat ID to `.env`] and write `/faucet <wallet_address>`.
+The bot should send tokens and return a response to indicate success or failure, and a block explorer link with the tx hash. Full details can be seen in the console or in the bot logfile.
+
+*to-add* - block explorer prefix as config parameter
 
 ## Anti-abuse features
 
