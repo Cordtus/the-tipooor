@@ -1,8 +1,11 @@
+// utils.js
+
 require('dotenv').config();
 const axios = require('axios');
 const { DirectSecp256k1HdWallet } = require('@cosmjs/proto-signing');
 const { SigningStargateClient } = require('@cosmjs/stargate');
 const { botLogger, txLogger } = require('./logger');
+const { getSession, saveSessionData } = require('./sessionManager');
 
 const faucetAmount = {
   denom: process.env.DENOM,
@@ -54,7 +57,6 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
     botLogger.info(`Simulated result: ${JSON.stringify(simulatedResult)}`);
     console.log(`Simulated result: ${JSON.stringify(simulatedResult)}`);
 
-    // Extract gas used directly from the simulated result
     let gasUsed;
     if (simulatedResult && simulatedResult.gas_info && simulatedResult.gas_info.gas_used) {
       gasUsed = simulatedResult.gas_info.gas_used;
@@ -63,7 +65,7 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
     } else if (typeof simulatedResult === 'number') {
       gasUsed = simulatedResult;
     } else {
-      gasUsed = simulatedResult;  // Assuming the simulated result is the gas used value directly
+      gasUsed = simulatedResult;
     }
 
     botLogger.info(`Extracted gas used: ${gasUsed}`);
@@ -122,14 +124,17 @@ async function sendTokens(wallet, recipientAddress) {
     if (result.code === 0) {
       txLogger.info(`Broadcasted transaction: ${result.transactionHash}`);
       console.log(`Broadcasted transaction: ${result.transactionHash}`);
-      return result;
+      return {
+        success: true,
+        transactionHash: result.transactionHash
+      };
     } else if (result.rawLog && result.rawLog.includes('transaction indexing is disabled')) {
       txLogger.warn(`Transaction indexing is disabled: ${result.rawLog}`);
       console.log(`Transaction indexing is disabled: ${result.rawLog}`);
       return {
-        ...result,
-        transactionHash: result.transactionHash || 'unknown', // Ensure transactionHash is not undefined
-        indexingWarning: true,
+        success: true,
+        transactionHash: null,
+        indexingWarning: true
       };
     } else {
       txLogger.error(`Transaction failed with code ${result.code}: ${result.rawLog}`);
@@ -140,7 +145,11 @@ async function sendTokens(wallet, recipientAddress) {
     if (error.message.includes("transaction indexing is disabled")) {
       txLogger.warn(`Transaction indexing is disabled, assuming success.`);
       console.warn(`Transaction indexing is disabled, assuming success.`);
-      return { code: 0, message: error.message, transactionHash: 'unknown' }; // Ensure transactionHash is not undefined
+      return {
+        success: true,
+        transactionHash: null,
+        indexingWarning: true
+      };
     }
     txLogger.error(`Error sending tokens: ${error}`);
     console.error(`Error sending tokens: ${error}`);
@@ -148,7 +157,37 @@ async function sendTokens(wallet, recipientAddress) {
   }
 }
 
+async function processFaucetRequest(ctx, userId, address) {
+  const session = getSession(userId);
+
+  try {
+    const wallet = await initWallet();
+    const result = await sendTokens(wallet, address);
+    if (result.success) {
+      session.data.lastClaim = Date.now();
+      session.data.lastReceived = session.data.lastReceived || {};
+      session.data.lastReceived[address] = Date.now();
+      saveSessionData();
+      botLogger.info(`Successfully sent 10 tokens to ${address}. Transaction hash: ${result.transactionHash}`);
+      const transactionHash = result.transactionHash || "unknown";
+      const explorerLink = transactionHash !== "unknown" ? 
+        `https://celatone.osmosis.zone/osmo-test-5/txs/${transactionHash}` :
+        'https://celatone.osmosis.zone/osmo-test-5';
+      return ctx.reply(`Successfully sent 10 tokens to ${address}. [Transaction details](${explorerLink})`, { parse_mode: 'Markdown' });
+    } else {
+      throw new Error('Failed to send tokens. Please try again later.');
+    }
+  } catch (error) {
+    botLogger.error('Error sending tokens:', error);
+    if (error.message.includes("out of gas")) {
+      return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+    }
+    return ctx.reply('Failed to send tokens. Please try again later.');
+  }
+}
+
 module.exports = {
   initWallet,
   sendTokens,
+  processFaucetRequest, // Export processFaucetRequest
 };
