@@ -1,4 +1,13 @@
-data/
+.key
+*.log
+logs/
 node_modules/
+.npm
+.eslintcache
 .env
+.next
+session_db.json
+dist/
+data/
+nodemon.json
 session_db.json
