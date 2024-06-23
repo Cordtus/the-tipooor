@@ -128,6 +128,7 @@ async function sendTokens(wallet, recipientAddress) {
       console.log(`Transaction indexing is disabled: ${result.rawLog}`);
       return {
         ...result,
+        transactionHash: result.transactionHash || 'unknown', // Ensure transactionHash is not undefined
         indexingWarning: true,
       };
     } else {
@@ -139,7 +140,7 @@ async function sendTokens(wallet, recipientAddress) {
     if (error.message.includes("transaction indexing is disabled")) {
       txLogger.warn(`Transaction indexing is disabled, assuming success.`);
       console.warn(`Transaction indexing is disabled, assuming success.`);
-      return { code: 0, message: error.message };
+      return { code: 0, message: error.message, transactionHash: 'unknown' }; // Ensure transactionHash is not undefined
     }
     txLogger.error(`Error sending tokens: ${error}`);
     console.error(`Error sending tokens: ${error}`);
