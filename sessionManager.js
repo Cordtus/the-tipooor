@@ -12,6 +12,12 @@ const FAUCET_TIMEOUT = FAUCET_TIMEOUT_HOURS * 60 * 60 * 1000;
 // EVM library
 const ethers = require("ethers");
 
+const provider = new ethers.providers.JsonRpcProvider(process.env.EVM_RPC_URL);
+
+const ADDRESS_CONVERTER_ADDRESS = "0x0000000000000000000000000000000000001004";
+const ADDRESS_CONVERTER_ABI = require("./abis/addressConverter.json");
+const ADDRESS_CONVERTER = new ethers.Contract(ADDRESS_CONVERTER_ADDRESS, ADDRESS_CONVERTER_ABI, provider);
+
 let sessionData = {};
 
 function loadSessionData() {
@@ -63,6 +69,20 @@ function setPendingRequest(userId, address) {
   saveSessionData();
 }
 
+async function checkAssociation(address) {
+  const response = {};
+
+  try {
+    const seiAddress = await ADDRESS_CONVERTER.getSeiAddr(address);
+    if (seiAddress) {
+      return false;
+    }
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 function isAddressValid(address) {
   return ethers.utils.isAddress(address);
 }
@@ -96,6 +116,11 @@ async function handleFaucetCommand(ctx, utils) {
     if (!isAddressValid(address)) {
       botLogger.info(`User ${userId} provided an invalid address: ${address}`);
       return ctx.reply('Invalid address. Please provide a valid EVM address.');
+    }
+
+    if (!checkAssociation(address)) {
+      botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
+      return ctx.reply('Please associate your EVM address on the Sei website..');
     }
 
     await utils.processFaucetRequest(ctx, userId, address);
