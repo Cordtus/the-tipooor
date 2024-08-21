@@ -11,3 +11,5 @@ dist/
 data/
 nodemon.json
 session_db.json
+package-lock.json
+yarn.lock
