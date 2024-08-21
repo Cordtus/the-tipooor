@@ -21,7 +21,7 @@ async function sendTokens(recipientAddress) {
   try {
     const transaction = {
       to: recipientAddress,
-      value: ethers.utils.parseEther("1.0"), // Sending 1 ETH
+      value: ethers.utils.parseEther(process.env.FAUCET_AMOUNT), // Sending 1 Sei
       maxPriorityFeePerGas: ethers.utils.parseUnits("100", "gwei"),
       maxFeePerGas: ethers.utils.parseUnits("100", "gwei"),
       gasLimit: ethers.utils.hexlify(21000), // No need to estimate EVM transfer

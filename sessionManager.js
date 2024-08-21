@@ -70,17 +70,19 @@ function setPendingRequest(userId, address) {
 }
 
 async function checkAssociation(address) {
-  const response = {};
 
   try {
     const seiAddress = await ADDRESS_CONVERTER.getSeiAddr(address);
     if (seiAddress) {
+      console.log(seiAddress)
+      return true;
+    } else {
       return false;
     }
-    return true;
   } catch (error) {
     return false;
   }
+
 }
 
 function isAddressValid(address) {
@@ -150,6 +152,11 @@ async function handleFaucetCommand(ctx, utils) {
     return ctx.reply('Invalid address. Please provide a valid Sei EVM wallet address.');
   }
 
+  if (!checkAssociation(address)) {
+    botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
+    return ctx.reply('Please associate your EVM address on the Sei website..');
+  }
+
   if (hasUserClaimedRecently(userId)) {
     const timeRemaining = FAUCET_TIMEOUT - (Date.now() - session.data.lastClaim);
     const hoursRemaining = Math.floor(timeRemaining / (60 * 60 * 1000));
@@ -190,6 +197,11 @@ async function handleVouchCommand(ctx, utils) {
       return ctx.reply('Invalid or no address found for the vouched user.');
     }
 
+    if (!checkAssociation(address)) {
+      botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
+      return ctx.reply('Please associate your EVM address on the Sei website..');
+    }
+
     try {
       const result = await utils.sendTokens(address);
       if (result.success) {
@@ -224,6 +236,7 @@ module.exports = {
   handleFaucetCommand,
   handleVouchCommand,
   isAddressValid,
+  checkAssociation,
   loadSessionData,
   getSession,
   saveSessionData,
