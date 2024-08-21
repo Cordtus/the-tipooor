@@ -161,13 +161,12 @@ async function handleVouchCommand(ctx, utils) {
   if (vouchedUserSession && vouchedUserSession.data.pendingRequest) {
     const address = vouchedUserSession.data.pendingAddress;
 
-    if (!address || !address.startsWith('osmo1')) {
+    if (!address || !ethers.utils.isAddress(address)) {
       return ctx.reply('Invalid or no address found for the vouched user.');
     }
 
     try {
-      const wallet = await utils.initWallet();
-      const result = await utils.sendTokens(wallet, address);
+      const result = await utils.sendTokens(address);
       if (result.success) {
         vouchedUserSession.data.lastClaim = Date.now();
         vouchedUserSession.data.lastReceived = vouchedUserSession.data.lastReceived || {};
