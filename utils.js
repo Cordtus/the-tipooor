@@ -60,8 +60,8 @@ async function processFaucetRequest(ctx, userId, address) {
         botLogger.info(`Successfully sent 1 ETH to ${address}. Transaction hash: ${result.transactionHash}`);
         const transactionHash = result.transactionHash || "unknown";
         const explorerLink = transactionHash !== "unknown" ?
-          `https://etherscan.io/tx/${transactionHash}` :
-          `https://etherscan.io/`;
+          `https://seitrace.com/tx/${result.transactionHash}?chain=atlantic-2` :
+          `https://seitrace.com/?chain=atlantic-2`;
         return ctx.reply(`Successfully sent 1 ETH to ${address}. [Transaction details](${explorerLink})`, { parse_mode: 'Markdown' });
       } else {
         throw new Error('Failed to send tokens. Please try again later.');
