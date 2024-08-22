@@ -9,6 +9,15 @@ const WHITELISTED_USER_IDS = (process.env.WHITELISTED_USER_IDS || '').split(',')
 const FAUCET_TIMEOUT_HOURS = parseInt(process.env.FAUCET_TIMEOUT_HOURS, 10) || 12;
 const FAUCET_TIMEOUT = FAUCET_TIMEOUT_HOURS * 60 * 60 * 1000;
 
+// EVM library
+const ethers = require("ethers");
+
+const provider = new ethers.providers.JsonRpcProvider(process.env.EVM_RPC_URL);
+
+const ADDRESS_CONVERTER_ADDRESS = "0x0000000000000000000000000000000000001004";
+const ADDRESS_CONVERTER_ABI = require("./abis/addressConverter.json");
+const ADDRESS_CONVERTER = new ethers.Contract(ADDRESS_CONVERTER_ADDRESS, ADDRESS_CONVERTER_ABI, provider);
+
 let sessionData = {};
 
 function loadSessionData() {
@@ -60,8 +69,24 @@ function setPendingRequest(userId, address) {
   saveSessionData();
 }
 
+async function checkAssociation(address) {
+
+  try {
+    const seiAddress = await ADDRESS_CONVERTER.getSeiAddr(address);
+    if (seiAddress) {
+      console.log(seiAddress)
+      return true;
+    } else {
+      return false;
+    }
+  } catch (error) {
+    return false;
+  }
+
+}
+
 function isAddressValid(address) {
-  return address.startsWith('osmo1');
+  return ethers.utils.isAddress(address);
 }
 
 async function handleFaucetCommand(ctx, utils) {
@@ -76,7 +101,7 @@ async function handleFaucetCommand(ctx, utils) {
     if (messageParts.length < 2) {
       botLogger.info(`User ${userId} did not provide an address.`);
       session.data.awaitingAddress = true;
-      ctx.reply('Please provide an osmo wallet address. Usage: /faucet osmo1...');
+      ctx.reply('Please provide a Sei EVM wallet address. Usage: /faucet 0x0...');
       setTimeout(() => {
         if (session.data.awaitingAddress) {
           session.data.awaitingAddress = false;
@@ -92,7 +117,12 @@ async function handleFaucetCommand(ctx, utils) {
     const address = messageParts[1];
     if (!isAddressValid(address)) {
       botLogger.info(`User ${userId} provided an invalid address: ${address}`);
-      return ctx.reply('Invalid address. Please provide a valid osmo address.');
+      return ctx.reply('Invalid address. Please provide a valid EVM address.');
+    }
+
+    if (!checkAssociation(address)) {
+      botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
+      return ctx.reply('Please associate your EVM address on the Sei website..');
     }
 
     await utils.processFaucetRequest(ctx, userId, address);
@@ -103,7 +133,7 @@ async function handleFaucetCommand(ctx, utils) {
   if (messageParts.length < 2) {
     botLogger.info(`User ${userId} did not provide an address.`);
     session.data.awaitingAddress = true;
-    ctx.reply('Please provide an osmo wallet address. Usage: /faucet osmo1...');
+    ctx.reply('Please provide a Sei EVM wallet address. Usage: /faucet 0x0...');
     setTimeout(() => {
       if (session.data.awaitingAddress) {
         session.data.awaitingAddress = false;
@@ -119,7 +149,12 @@ async function handleFaucetCommand(ctx, utils) {
   const address = messageParts[1];
   if (!isAddressValid(address)) {
     botLogger.info(`User ${userId} provided an invalid address: ${address}`);
-    return ctx.reply('Invalid address. Please provide a valid osmo address.');
+    return ctx.reply('Invalid address. Please provide a valid Sei EVM wallet address.');
+  }
+
+  if (!checkAssociation(address)) {
+    botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
+    return ctx.reply('Please associate your EVM address on the Sei website..');
   }
 
   if (hasUserClaimedRecently(userId)) {
@@ -158,13 +193,17 @@ async function handleVouchCommand(ctx, utils) {
   if (vouchedUserSession && vouchedUserSession.data.pendingRequest) {
     const address = vouchedUserSession.data.pendingAddress;
 
-    if (!address || !address.startsWith('osmo1')) {
+    if (!address || !ethers.utils.isAddress(address)) {
       return ctx.reply('Invalid or no address found for the vouched user.');
     }
 
+    if (!checkAssociation(address)) {
+      botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
+      return ctx.reply('Please associate your EVM address on the Sei website..');
+    }
+
     try {
-      const wallet = await utils.initWallet();
-      const result = await utils.sendTokens(wallet, address);
+      const result = await utils.sendTokens(address);
       if (result.success) {
         vouchedUserSession.data.lastClaim = Date.now();
         vouchedUserSession.data.lastReceived = vouchedUserSession.data.lastReceived || {};
@@ -172,9 +211,9 @@ async function handleVouchCommand(ctx, utils) {
         vouchedUserSession.data.pendingRequest = false;
         vouchedUserSession.data.awaitingAddress = false;
         saveSessionData();
-        const explorerLink = result.transactionHash ? 
-          `https://celatone.osmosis.zone/osmo-test-5/txs/${result.transactionHash}` : 
-          'https://celatone.osmosis.zone/osmo-test-5';
+        const explorerLink = result.transactionHash ?
+          `https://seitrace.com/tx/${result.transactionHash}?chain=atlantic-2` :
+          `https://seitrace.com/?chain=atlantic-2`;
         return ctx.reply(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. [Transaction details](${explorerLink})`, { parse_mode: 'Markdown' });
       } else {
         throw new Error('Failed to send tokens. Please try again later.');
@@ -197,6 +236,7 @@ module.exports = {
   handleFaucetCommand,
   handleVouchCommand,
   isAddressValid,
+  checkAssociation,
   loadSessionData,
   getSession,
   saveSessionData,
