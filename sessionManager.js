@@ -58,7 +58,43 @@ function hasUserClaimedRecently(userId) {
 
 function hasAddressReceivedRecently(address) {
   const currentTime = Date.now();
-  return sessionData.sessions.some(session => session.data.lastReceived && session.data.lastReceived[address] && currentTime - session.data.lastReceived[address] < FAUCET_TIMEOUT);
+  const linkedAddress = getLinkedAddress(address);
+
+  // Check both the given address and its linked counterpart
+  return sessionData.sessions.some(session => {
+    return (session.data.lastReceived && session.data.lastReceived[address] && currentTime - session.data.lastReceived[address] < FAUCET_TIMEOUT) ||
+           (linkedAddress && session.data.lastReceived[linkedAddress] && currentTime - session.data.lastReceived[linkedAddress] < FAUCET_TIMEOUT);
+  });
+}
+
+async function getLinkedAddress(address) {
+  try {
+    if (address.startsWith("sei")) {
+      const evmAddress = await ADDRESS_CONVERTER.getEvmAddr(address);
+      return evmAddress;
+    } else if (ethers.utils.isAddress(address)) {
+      const seiAddress = await ADDRESS_CONVERTER.getSeiAddr(address);
+      return seiAddress;
+    }
+  } catch (error) {
+    botLogger.error(`Error retrieving linked address for ${address}: ${error.message}`);
+    return null;
+  }
+  return null;
+}
+
+function updateSessionWithLinkedAddresses(userId, address) {
+  const session = getSession(userId);
+  getLinkedAddress(address).then(linkedAddress => {
+    if (linkedAddress) {
+      session.data.linkedAddresses = session.data.linkedAddresses || {};
+      session.data.linkedAddresses[address] = linkedAddress;
+      session.data.linkedAddresses[linkedAddress] = address; // Keep bidirectional linkage
+      saveSessionData();
+    }
+  }).catch(error => {
+    botLogger.error(`Failed to update linked addresses for ${address}: ${error.message}`);
+  });
 }
 
 function setPendingRequest(userId, address) {
@@ -70,11 +106,9 @@ function setPendingRequest(userId, address) {
 }
 
 async function checkAssociation(address) {
-
   try {
     const seiAddress = await ADDRESS_CONVERTER.getSeiAddr(address);
     if (seiAddress) {
-      console.log(seiAddress)
       return true;
     } else {
       return false;
@@ -82,7 +116,6 @@ async function checkAssociation(address) {
   } catch (error) {
     return false;
   }
-
 }
 
 function isAddressValid(address) {
@@ -101,7 +134,7 @@ async function handleFaucetCommand(ctx, utils) {
     if (messageParts.length < 2) {
       botLogger.info(`User ${userId} did not provide an address.`);
       session.data.awaitingAddress = true;
-      ctx.reply('Please provide a Sei EVM wallet address. Usage: /faucet 0x0...');
+      ctx.reply('Please provide a Sei or EVM wallet address. Usage: /faucet <address>');
       setTimeout(() => {
         if (session.data.awaitingAddress) {
           session.data.awaitingAddress = false;
@@ -117,23 +150,26 @@ async function handleFaucetCommand(ctx, utils) {
     const address = messageParts[1];
     if (!isAddressValid(address)) {
       botLogger.info(`User ${userId} provided an invalid address: ${address}`);
-      return ctx.reply('Invalid address. Please provide a valid EVM address.');
+      return ctx.reply('Invalid address. Please provide a valid Sei or EVM address.');
     }
 
-    if (!checkAssociation(address)) {
-      botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
-      return ctx.reply('Please associate your EVM address on the Sei website..');
+    updateSessionWithLinkedAddresses(userId, address); // Update linked address data
+
+    if (!await checkAssociation(address)) {
+      botLogger.info(`User ${userId} provided an unassociated address: ${address}`);
+      return ctx.reply('Please associate your address on the Sei website.');
     }
 
     await utils.processFaucetRequest(ctx, userId, address);
     return;
   }
 
+  // Non-whitelisted users
   const messageParts = ctx.message.text.split(' ');
   if (messageParts.length < 2) {
     botLogger.info(`User ${userId} did not provide an address.`);
     session.data.awaitingAddress = true;
-    ctx.reply('Please provide a Sei EVM wallet address. Usage: /faucet 0x0...');
+    ctx.reply('Please provide a Sei or EVM wallet address. Usage: /faucet <address>');
     setTimeout(() => {
       if (session.data.awaitingAddress) {
         session.data.awaitingAddress = false;
@@ -149,12 +185,14 @@ async function handleFaucetCommand(ctx, utils) {
   const address = messageParts[1];
   if (!isAddressValid(address)) {
     botLogger.info(`User ${userId} provided an invalid address: ${address}`);
-    return ctx.reply('Invalid address. Please provide a valid Sei EVM wallet address.');
+    return ctx.reply('Invalid address. Please provide a valid Sei or EVM address.');
   }
 
-  if (!checkAssociation(address)) {
-    botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
-    return ctx.reply('Please associate your EVM address on the Sei website..');
+  updateSessionWithLinkedAddresses(userId, address); // Update linked address data
+
+  if (!await checkAssociation(address)) {
+    botLogger.info(`User ${userId} provided an unassociated address: ${address}`);
+    return ctx.reply('Please associate your address on the Sei website.');
   }
 
   if (hasUserClaimedRecently(userId)) {
@@ -176,65 +214,8 @@ async function handleFaucetCommand(ctx, utils) {
   await utils.processFaucetRequest(ctx, userId, address);
 }
 
-async function handleVouchCommand(ctx, utils) {
-  botLogger.info(`Vouch command received from user: ${ctx.from.id}`);
-
-  if (!ctx.message.reply_to_message) {
-    return ctx.reply('Please reply to the message of the user you want to vouch for.');
-  }
-
-  const vouchedUserId = `${ctx.chat.id}:${ctx.message.reply_to_message.from.id}`;
-  const vouchedUserSession = getSession(vouchedUserId);
-
-  if (vouchedUserId === `${ctx.chat.id}:${ctx.from.id}`) {
-    return ctx.reply('You cannot vouch for yourself.');
-  }
-
-  if (vouchedUserSession && vouchedUserSession.data.pendingRequest) {
-    const address = vouchedUserSession.data.pendingAddress;
-
-    if (!address || !ethers.utils.isAddress(address)) {
-      return ctx.reply('Invalid or no address found for the vouched user.');
-    }
-
-    if (!checkAssociation(address)) {
-      botLogger.info(`User ${userId} provided an unassociated EVM address: ${address}`);
-      return ctx.reply('Please associate your EVM address on the Sei website..');
-    }
-
-    try {
-      const result = await utils.sendTokens(address);
-      if (result.success) {
-        vouchedUserSession.data.lastClaim = Date.now();
-        vouchedUserSession.data.lastReceived = vouchedUserSession.data.lastReceived || {};
-        vouchedUserSession.data.lastReceived[address] = Date.now();
-        vouchedUserSession.data.pendingRequest = false;
-        vouchedUserSession.data.awaitingAddress = false;
-        saveSessionData();
-        const explorerLink = result.transactionHash ?
-          `https://seitrace.com/tx/${result.transactionHash}?chain=atlantic-2` :
-          `https://seitrace.com/?chain=atlantic-2`;
-        return ctx.reply(`Successfully sent 10 tokens to ${address} for user @${ctx.message.reply_to_message.from.username}. [Transaction details](${explorerLink})`, { parse_mode: 'Markdown' });
-      } else {
-        throw new Error('Failed to send tokens. Please try again later.');
-      }
-    } catch (error) {
-      if (error.message.includes("out of gas")) {
-        return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
-      }
-      return ctx.reply('Failed to send tokens. Please try again later.');
-    }
-  } else {
-    return ctx.reply(`The mentioned user has not requested tokens in the last ${FAUCET_TIMEOUT_HOURS} hours or has already been vouched for.`);
-  }
-}
-
-// Load session data on startup
-loadSessionData();
-
 module.exports = {
   handleFaucetCommand,
-  handleVouchCommand,
   isAddressValid,
   checkAssociation,
   loadSessionData,
@@ -244,4 +225,5 @@ module.exports = {
   hasUserClaimedRecently,
   hasAddressReceivedRecently,
   setPendingRequest,
+  updateSessionWithLinkedAddresses,
 };
