@@ -119,5 +119,3 @@ Conditions:
 * The user being vouched for must have a pending request.
 * The user sending the `/vouch` command cannot vouch for themselves.
 * The address in the pending request must be valid.
-
-*to-add* – restrict this ability to only select users for added abuse resistance
