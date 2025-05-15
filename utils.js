@@ -9,7 +9,7 @@ const { getSession, saveSessionData } = require('./sessionManager');
 
 const faucetAmount = {
   denom: process.env.DENOM,
-  amount: '10000000' // 10 tokens in micro units
+  amount: process.env.AMOUNT
 };
 
 const rpcUrl = process.env.RPC_URL;
