@@ -9,13 +9,13 @@ const { getSession, saveSessionData } = require('./sessionManager');
 
 const faucetAmount = {
   denom: process.env.DENOM,
-  amount: process.env.AMOUNT
+  amount: process.env.AMOUNT,
 };
 
 const rpcUrl = process.env.RPC_URL;
 const lcdUrl = process.env.LCD_URL;
 const chainId = process.env.CHAIN_ID;
-const memo = "make test";
+const memo = 'make test';
 
 if (!rpcUrl || !lcdUrl || !chainId || !process.env.FAUCET_MNEMONIC || !process.env.DENOM) {
   botLogger.error('Environment variables are not properly set');
@@ -24,60 +24,36 @@ if (!rpcUrl || !lcdUrl || !chainId || !process.env.FAUCET_MNEMONIC || !process.e
 
 async function initWallet() {
   botLogger.info('Initializing wallet with provided mnemonic');
-  console.log('Initializing wallet with provided mnemonic');
   const wallet = await DirectSecp256k1HdWallet.fromMnemonic(process.env.FAUCET_MNEMONIC, { prefix: 'osmo' });
   const [firstAccount] = await wallet.getAccounts();
   botLogger.info(`Initialized wallet address: ${firstAccount.address}`);
-  console.log(`Initialized wallet address: ${firstAccount.address}`);
   return wallet;
 }
 
 async function getMinGasPrice() {
   try {
     const url = `${lcdUrl}/osmosis/txfees/v1beta1/cur_eip_base_fee`;
-    botLogger.info(`Sending request to get minimum gas price from ${url}`);
-    console.log(`Sending request to get minimum gas price from ${url}`);
-    const response = await axios.get(url);
-    const baseFee = parseFloat(response.data.base_fee);
-    botLogger.info(`Base fee response: ${JSON.stringify(response.data)}`);
-    console.log(`Base fee response: ${JSON.stringify(response.data)}`);
-    return baseFee;
-  } catch (error) {
-    botLogger.error('Error fetching minimum gas price:', error);
-    console.error('Error fetching minimum gas price:', error);
+    botLogger.info(`Fetching base fee from ${url}`);
+    const resp = await axios.get(url);
+    return parseFloat(resp.data.base_fee);
+  } catch (err) {
+    botLogger.error('Error fetching minimum gas price:', err);
     throw new Error('Failed to fetch minimum gas price');
   }
 }
 
 async function simulateTransaction(client, firstAccount, messages, memo) {
   try {
-    botLogger.info(`Simulating transaction with messages: ${JSON.stringify(messages)}`);
-    console.log(`Simulating transaction with messages: ${JSON.stringify(messages)}`);
-    const simulatedResult = await client.simulate(firstAccount.address, messages, memo);
-    botLogger.info(`Simulated result: ${JSON.stringify(simulatedResult)}`);
-    console.log(`Simulated result: ${JSON.stringify(simulatedResult)}`);
-
-    let gasUsed;
-    if (simulatedResult && simulatedResult.gas_info && simulatedResult.gas_info.gas_used) {
-      gasUsed = simulatedResult.gas_info.gas_used;
-    } else if (simulatedResult && simulatedResult.gasUsed) {
-      gasUsed = simulatedResult.gasUsed;
-    } else if (typeof simulatedResult === 'number') {
-      gasUsed = simulatedResult;
-    } else {
-      gasUsed = simulatedResult;
-    }
-
-    botLogger.info(`Extracted gas used: ${gasUsed}`);
-    console.log(`Extracted gas used: ${gasUsed}`);
-
-    if (!gasUsed) {
-      throw new Error(`Gas used not found in simulated result: ${JSON.stringify(simulatedResult)}`);
-    }
+    botLogger.info(`Simulating tx for ${firstAccount.address}`);
+    const simResult = await client.simulate(firstAccount.address, messages, memo);
+    const gasUsed =
+      simResult.gas_info?.gas_used ||
+      simResult.gasUsed ||
+      (typeof simResult === 'number' ? simResult : null);
+    if (!gasUsed) throw new Error('Gas used not found in simulation');
     return gasUsed;
-  } catch (error) {
-    botLogger.error('Error simulating transaction:', error);
-    console.error('Error simulating transaction:', error);
+  } catch (err) {
+    botLogger.error('Error simulating transaction:', err);
     throw new Error('Failed to simulate transaction');
   }
 }
@@ -85,75 +61,45 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
 async function sendTokens(wallet, recipientAddress) {
   try {
     const [firstAccount] = await wallet.getAccounts();
-    botLogger.info(`Sending tokens from ${firstAccount.address} to ${recipientAddress}`);
-    console.log(`Sending tokens from ${firstAccount.address} to ${recipientAddress}`);
-
     const client = await SigningStargateClient.connectWithSigner(rpcUrl, wallet);
-
-    const messages = [{
-      typeUrl: '/cosmos.bank.v1beta1.MsgSend',
-      value: {
-        fromAddress: firstAccount.address,
-        toAddress: recipientAddress,
-        amount: [faucetAmount],
+    const messages = [
+      {
+        typeUrl: '/cosmos.bank.v1beta1.MsgSend',
+        value: {
+          fromAddress: firstAccount.address,
+          toAddress: recipientAddress,
+          amount: [faucetAmount],
+        },
       },
-    }];
+    ];
 
     const baseFee = await getMinGasPrice();
-    console.log(`Fetched base fee: ${baseFee}`);
     const gasEstimation = await simulateTransaction(client, firstAccount, messages, memo);
-    console.log(`Gas estimation returned: ${gasEstimation}`);
-    const gasLimit = Math.ceil(gasEstimation * 1.15); // Adding 15% buffer
-    console.log(`Gas estimation: ${gasEstimation}, Gas limit: ${gasLimit}`);
-    const feeAmountValue = Math.ceil(gasLimit * baseFee);
-    console.log(`Calculated fee amount value: ${feeAmountValue}`);
+    const gasLimit = Math.ceil(gasEstimation * 1.15);
     const feeAmount = {
-      denom: 'uosmo',
-      amount: feeAmountValue.toString(),
+      denom: process.env.DENOM,
+      amount: Math.ceil(gasLimit * baseFee).toString(),
     };
-    const fee = {
-      amount: [feeAmount],
-      gas: gasLimit.toString(),
-    };
+    const fee = { amount: [feeAmount], gas: gasLimit.toString() };
 
-    botLogger.info(`Sending transaction with fee: ${JSON.stringify(fee)}`);
-    console.log(`Sending transaction with fee: ${JSON.stringify(fee)}`);
+    botLogger.info(`Broadcasting tx with fee: ${JSON.stringify(fee)}`);
     const result = await client.sendTokens(firstAccount.address, recipientAddress, [faucetAmount], fee, memo);
 
-    console.log(`Transaction result: ${JSON.stringify(result, (key, value) => typeof value === 'bigint' ? value.toString() : value)}`);
     if (result.code === 0) {
-      txLogger.info(`Broadcasted transaction: ${result.transactionHash}`);
-      console.log(`Broadcasted transaction: ${result.transactionHash}`);
-      return {
-        success: true,
-        transactionHash: result.transactionHash
-      };
-    } else if (result.rawLog && result.rawLog.includes('transaction indexing is disabled')) {
-      txLogger.warn(`Transaction indexing is disabled: ${result.rawLog}`);
-      console.log(`Transaction indexing is disabled: ${result.rawLog}`);
-      return {
-        success: true,
-        transactionHash: null,
-        indexingWarning: true
-      };
+      txLogger.info(`Tx hash: ${result.transactionHash}`);
+      return { success: true, transactionHash: result.transactionHash };
+    } else if (result.rawLog?.includes('transaction indexing is disabled')) {
+      txLogger.warn('Indexing disabled warning');
+      return { success: true, transactionHash: null };
     } else {
-      txLogger.error(`Transaction failed with code ${result.code}: ${result.rawLog}`);
-      console.error(`Transaction failed with code ${result.code}: ${result.rawLog}`);
-      throw new Error(`Transaction failed with code ${result.code}`);
+      throw new Error(`Tx failed: ${result.rawLog}`);
     }
-  } catch (error) {
-    if (error.message.includes("transaction indexing is disabled")) {
-      txLogger.warn(`Transaction indexing is disabled, assuming success.`);
-      console.warn(`Transaction indexing is disabled, assuming success.`);
-      return {
-        success: true,
-        transactionHash: null,
-        indexingWarning: true
-      };
+  } catch (err) {
+    txLogger.error('Error sending tokens:', err);
+    if (err.message.includes('transaction indexing is disabled')) {
+      return { success: true, transactionHash: null };
     }
-    txLogger.error(`Error sending tokens: ${error}`);
-    console.error(`Error sending tokens: ${error}`);
-    throw error;
+    throw err;
   }
 }
 
@@ -162,32 +108,33 @@ async function processFaucetRequest(ctx, userId, address) {
 
   try {
     const wallet = await initWallet();
-    const result = await sendTokens(wallet, address);
-    if (result.success) {
+    const res = await sendTokens(wallet, address);
+    if (res.success) {
       session.data.lastClaim = Date.now();
       session.data.lastReceived = session.data.lastReceived || {};
       session.data.lastReceived[address] = Date.now();
       saveSessionData();
-      botLogger.info(`Successfully sent 10 tokens to ${address}. Transaction hash: ${result.transactionHash}`);
-      const transactionHash = result.transactionHash || "unknown";
-      const explorerLink = transactionHash !== "unknown" ? 
-        `https://celatone.osmosis.zone/osmo-test-5/txs/${transactionHash}` :
-        'https://celatone.osmosis.zone/osmo-test-5';
-      return ctx.reply(`Successfully sent 10 tokens to ${address}. [Transaction details](${explorerLink})`, { parse_mode: 'Markdown' });
+
+      const explorerLink = res.transactionHash
+        ? `https://celatone.osmosis.zone/${chainId}/txs/${res.transactionHash}`
+        : `https://celatone.osmosis.zone/${chainId}`;
+
+      return ctx.reply(
+        `Successfully sent 10 tokens to ${address}. [Details](${explorerLink})`,
+        { parse_mode: 'Markdown' }
+      );
     } else {
-      throw new Error('Failed to send tokens. Please try again later.');
+      throw new Error('Failed to send tokens');
     }
-  } catch (error) {
-    botLogger.error('Error sending tokens:', error);
-    if (error.message.includes("out of gas")) {
-      return ctx.reply('Transaction failed due to out of gas. Please try again later with a higher gas limit.');
+  } catch (err) {
+    botLogger.error('Error sending tokens:', err);
+    if (err.message.includes('out of gas')) {
+      return ctx.reply(
+        'Transaction failed due to out of gas. Please try again later with higher gas.'
+      );
     }
     return ctx.reply('Failed to send tokens. Please try again later.');
   }
 }
 
-module.exports = {
-  initWallet,
-  sendTokens,
-  processFaucetRequest, // Export processFaucetRequest
-};
+module.exports = { initWallet, sendTokens, processFaucetRequest };

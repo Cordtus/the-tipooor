@@ -15,7 +15,10 @@ if (!botToken) {
 
 const bot = new Telegraf(botToken);
 
-const allowedGroupIds = (process.env.ALLOWED_GROUP_IDS || '').split(',').map(id => id.trim()).filter(Boolean);
+const allowedGroupIds = (process.env.ALLOWED_GROUP_IDS || '')
+  .split(',')
+  .map(id => id.trim())
+  .filter(Boolean);
 
 bot.use((ctx, next) => {
   logger.info(`Received update of type: ${ctx.updateType}`);
@@ -30,7 +33,11 @@ bot.use((ctx, next) => {
       return next();
     } else {
       logger.info(`Message is not from an allowed group: ${ctx.chat.id}`);
-      return ctx.reply(`Sorry, I am only allowed to operate in the groups with IDs: ${allowedGroupIds.join(', ')}`);
+      return ctx.reply(
+        `Sorry, I am only allowed to operate in the groups with IDs: ${allowedGroupIds.join(
+          ', '
+        )}`
+      );
     }
   }
   return next();
@@ -42,7 +49,8 @@ loadSessionData();
 // Register command handlers
 registerHandlers(bot);
 
-bot.launch()
+bot
+  .launch()
   .then(() => logger.info('Bot started'))
   .catch(err => logger.error('Failed to start bot:', err));
 
@@ -55,3 +63,4 @@ process.once('SIGTERM', () => {
   logger.info('SIGTERM received, stopping bot...');
   bot.stop('SIGTERM');
 });
+
