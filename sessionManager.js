@@ -80,14 +80,14 @@ async function handleFaucetCommand(ctx, utils) {
     if (hasUserClaimedRecently(userKey)) {
       setPendingRequest(userKey, address);
       return ctx.reply(
-        `Already claimed in last ${FAUCET_TIMEOUT_HOURS}h. Reply or /vouch to bypass.`,
+        `Already claimed in last ${FAUCET_TIMEOUT_HOURS}h. Ask someone to reply to your original request message with "/vouch" to bypass.`,
         { reply_to_message_id: ctx.message.message_id }
       );
     }
     if (hasAddressReceivedRecently(address)) {
       setPendingRequest(userKey, address);
       return ctx.reply(
-        `Address used in last ${FAUCET_TIMEOUT_HOURS}h. Reply or /vouch to bypass.`,
+        `Address used in last ${FAUCET_TIMEOUT_HOURS}h. Ask someone to reply to your original request message with "vouch" to bypass.`,
         { reply_to_message_id: ctx.message.message_id }
       );
     }
