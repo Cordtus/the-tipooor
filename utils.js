@@ -5,7 +5,6 @@ const axios = require('axios');
 const { DirectSecp256k1HdWallet } = require('@cosmjs/proto-signing');
 const { SigningStargateClient } = require('@cosmjs/stargate');
 const { botLogger, txLogger } = require('./logger');
-const { getSession, saveSessionData } = require('./sessionManager');
 
 const faucetAmount = {
   denom: process.env.DENOM,
@@ -104,7 +103,8 @@ async function sendTokens(wallet, recipientAddress) {
 }
 
 async function processFaucetRequest(ctx, userId, address) {
-  const session = getSession(userId);
+  const sessionManager = require('./sessionManager');
+  const session = sessionManager.getSession(userId);
 
   try {
     const wallet = await initWallet();
@@ -113,7 +113,7 @@ async function processFaucetRequest(ctx, userId, address) {
       session.data.lastClaim = Date.now();
       session.data.lastReceived = session.data.lastReceived || {};
       session.data.lastReceived[address] = Date.now();
-      saveSessionData();
+      sessionManager.saveSessionData();
 
       const explorerLink = res.transactionHash
         ? `https://celatone.osmosis.zone/${chainId}/txs/${res.transactionHash}`
