@@ -7,11 +7,6 @@ const { SigningStargateClient } = require('@cosmjs/stargate');
 const { botLogger, txLogger } = require('./logger');
 const { getSession, saveSessionData } = require('./sessionManager');
 
-const faucetAmount = {
-  denom: process.env.DENOM,
-  amount: process.env.AMOUNT,
-};
-
 const rpcUrl = process.env.RPC_URL;
 const lcdUrl = process.env.LCD_URL;
 const chainId = process.env.CHAIN_ID;
@@ -47,9 +42,9 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
     botLogger.info(`Simulating tx for ${firstAccount.address}`);
     const simResult = await client.simulate(firstAccount.address, messages, memo);
     const gasUsed =
-      simResult.gas_info?.gas_used ||
-      simResult.gasUsed ||
-      (typeof simResult === 'number' ? simResult : null);
+    simResult.gas_info?.gas_used ||
+    simResult.gasUsed ||
+    (typeof simResult === 'number' ? simResult : null);
     if (!gasUsed) throw new Error('Gas used not found in simulation');
     return gasUsed;
   } catch (err) {
@@ -58,10 +53,18 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
   }
 }
 
-async function sendTokens(wallet, recipientAddress) {
+async function sendTokens(wallet, recipientAddress, customAmount = null) {
   try {
     const [firstAccount] = await wallet.getAccounts();
     const client = await SigningStargateClient.connectWithSigner(rpcUrl, wallet);
+
+    // Use custom amount if provided, otherwise fall back to env variable
+    const amount = customAmount || parseInt(process.env.AMOUNT, 10);
+    const faucetAmount = {
+      denom: process.env.DENOM,
+      amount: amount.toString(),
+    };
+
     const messages = [
       {
         typeUrl: '/cosmos.bank.v1beta1.MsgSend',
@@ -82,11 +85,11 @@ async function sendTokens(wallet, recipientAddress) {
     };
     const fee = { amount: [feeAmount], gas: gasLimit.toString() };
 
-    botLogger.info(`Broadcasting tx with fee: ${JSON.stringify(fee)}`);
+    botLogger.info(`Broadcasting tx with fee: ${JSON.stringify(fee)}, amount: ${amount}`);
     const result = await client.sendTokens(firstAccount.address, recipientAddress, [faucetAmount], fee, memo);
 
     if (result.code === 0) {
-      txLogger.info(`Tx hash: ${result.transactionHash}`);
+      txLogger.info(`Tx hash: ${result.transactionHash}, amount sent: ${amount} ${process.env.DENOM}`);
       return { success: true, transactionHash: result.transactionHash };
     } else if (result.rawLog?.includes('transaction indexing is disabled')) {
       txLogger.warn('Indexing disabled warning');
@@ -108,7 +111,10 @@ async function processFaucetRequest(ctx, userId, address) {
 
   try {
     const wallet = await initWallet();
-    const res = await sendTokens(wallet, address);
+    // Note: This function doesn't implement the new decay system yet
+    // It's primarily used for the address reply handler
+    const amount = parseInt(process.env.AMOUNT, 10);
+    const res = await sendTokens(wallet, address, amount);
     if (res.success) {
       session.data.lastClaim = Date.now();
       session.data.lastReceived = session.data.lastReceived || {};
@@ -116,12 +122,12 @@ async function processFaucetRequest(ctx, userId, address) {
       saveSessionData();
 
       const explorerLink = res.transactionHash
-        ? `https://celatone.osmosis.zone/${chainId}/txs/${res.transactionHash}`
-        : `https://celatone.osmosis.zone/${chainId}`;
+      ? `https://celatone.osmosis.zone/${chainId}/txs/${res.transactionHash}`
+      : `https://celatone.osmosis.zone/${chainId}`;
 
       return ctx.reply(
-        `Successfully sent 10 tokens to ${address}. [Details](${explorerLink})`,
-        { parse_mode: 'Markdown' }
+        `Successfully sent ${amount} tokens to ${address}. [Details](${explorerLink})`,
+                       { parse_mode: 'Markdown' }
       );
     } else {
       throw new Error('Failed to send tokens');

@@ -1,25 +1,93 @@
-const { loadSessionData, handleFaucetCommand, handleVouchCommand } = require('./sessionManager');
-const utils = require('./utils');
+const {
+  loadSessionData,
+  handleFaucetCommand,
+  handleVouchCommand,
+  handleStatusCommand,
+  calculateEligibleAmount,
+  updateUserAmount,
+  checkWalletLock,
+  saveSessionData,
+  getSession,
+  sessionData
+} = require('./sessionManager');
+const { initWallet, sendTokens } = require('./utils');
+const { botLogger } = require('./logger');
 
 function registerHandlers(bot) {
   loadSessionData();
 
   bot.command('faucet', async ctx => {
-    await handleFaucetCommand(ctx, utils);
+    await handleFaucetCommand(ctx);
   });
 
   bot.command('vouch', async ctx => {
-    await handleVouchCommand(ctx, utils);
+    await handleVouchCommand(ctx);
+  });
+
+  bot.command('status', async ctx => {
+    await handleStatusCommand(ctx);
   });
 
   bot.on('text', async ctx => {
-    // handle address reply
+    // handle address reply with new decay system
     const key = `${ctx.chat.id}:${ctx.from.id}`;
-    const session = require('./sessionManager').getSession(key).data;
+    const userId = ctx.from.id.toString();
+    const session = getSession(key).data;
+
     if (session.awaitingAddress && /^osmo1/.test(ctx.message.text)) {
+      const address = ctx.message.text.trim();
       session.awaitingAddress = false;
-      await utils.processFaucetRequest(ctx, key, ctx.message.text);
-      require('./sessionManager').saveSessionData();
+
+      try {
+        // Check wallet locking first
+        const lockCheck = checkWalletLock(address, userId);
+        if (!lockCheck.allowed) {
+          return ctx.reply(
+            `Cannot send to this address: ${lockCheck.reason}`,
+            { reply_to_message_id: ctx.message.message_id }
+          );
+        }
+
+        // Get the eligible amount using the new decay system
+        const { amount, multiplier } = calculateEligibleAmount(userId);
+
+        const wallet = await initWallet();
+        const res = await sendTokens(wallet, address, amount);
+
+        if (res.success) {
+          // Update user amount tracking
+          updateUserAmount(userId, true);
+
+          session.lastClaim = Date.now();
+          session.lastReceived = session.lastReceived || {};
+          session.lastReceived[address] = Date.now();
+
+          saveSessionData();
+
+          const explorerLink = res.transactionHash
+          ? `https://celatone.osmosis.zone/${process.env.CHAIN_ID}/txs/${res.transactionHash}`
+          : `https://celatone.osmosis.zone/${process.env.CHAIN_ID}`;
+
+          const multiplierInfo = multiplier < 1.0
+          ? ` (${(multiplier * 100).toFixed(1)}% of base amount due to recent requests)`
+          : '';
+
+          return ctx.reply(
+            `Successfully sent ${amount} ${process.env.DENOM} to ${address}${multiplierInfo}. [Details](${explorerLink})`,
+                           { parse_mode: 'Markdown' }
+          );
+        } else {
+          throw new Error('Failed to send tokens');
+        }
+      } catch (err) {
+        botLogger.error('Error in address reply handler:', err);
+        if (err.message.includes('out of gas')) {
+          return ctx.reply(
+            'Transaction failed due to out of gas. Please try again later with higher gas.'
+          );
+        }
+        return ctx.reply('Failed to send tokens. Please try again later.');
+      }
     }
   });
 }
