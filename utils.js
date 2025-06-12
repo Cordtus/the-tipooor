@@ -5,7 +5,6 @@ const axios = require('axios');
 const { DirectSecp256k1HdWallet } = require('@cosmjs/proto-signing');
 const { SigningStargateClient } = require('@cosmjs/stargate');
 const { botLogger, txLogger } = require('./logger');
-const { getSession, saveSessionData } = require('./sessionManager');
 
 const rpcUrl = process.env.RPC_URL;
 const lcdUrl = process.env.LCD_URL;
@@ -42,9 +41,9 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
     botLogger.info(`Simulating tx for ${firstAccount.address}`);
     const simResult = await client.simulate(firstAccount.address, messages, memo);
     const gasUsed =
-    simResult.gas_info?.gas_used ||
-    simResult.gasUsed ||
-    (typeof simResult === 'number' ? simResult : null);
+      simResult.gas_info?.gas_used ||
+      simResult.gasUsed ||
+      (typeof simResult === 'number' ? simResult : null);
     if (!gasUsed) throw new Error('Gas used not found in simulation');
     return gasUsed;
   } catch (err) {
@@ -53,13 +52,11 @@ async function simulateTransaction(client, firstAccount, messages, memo) {
   }
 }
 
-async function sendTokens(wallet, recipientAddress, customAmount = null) {
+async function sendTokens(wallet, recipientAddress, amount) {
   try {
     const [firstAccount] = await wallet.getAccounts();
     const client = await SigningStargateClient.connectWithSigner(rpcUrl, wallet);
 
-    // Use custom amount if provided, otherwise fall back to env variable
-    const amount = customAmount || parseInt(process.env.AMOUNT, 10);
     const faucetAmount = {
       denom: process.env.DENOM,
       amount: amount.toString(),
@@ -106,41 +103,4 @@ async function sendTokens(wallet, recipientAddress, customAmount = null) {
   }
 }
 
-async function processFaucetRequest(ctx, userId, address) {
-  const session = getSession(userId);
-
-  try {
-    const wallet = await initWallet();
-    // Note: This function doesn't implement the new decay system yet
-    // It's primarily used for the address reply handler
-    const amount = parseInt(process.env.AMOUNT, 10);
-    const res = await sendTokens(wallet, address, amount);
-    if (res.success) {
-      session.data.lastClaim = Date.now();
-      session.data.lastReceived = session.data.lastReceived || {};
-      session.data.lastReceived[address] = Date.now();
-      saveSessionData();
-
-      const explorerLink = res.transactionHash
-      ? `https://celatone.osmosis.zone/${chainId}/txs/${res.transactionHash}`
-      : `https://celatone.osmosis.zone/${chainId}`;
-
-      return ctx.reply(
-        `Successfully sent ${amount} tokens to ${address}. [Details](${explorerLink})`,
-                       { parse_mode: 'Markdown' }
-      );
-    } else {
-      throw new Error('Failed to send tokens');
-    }
-  } catch (err) {
-    botLogger.error('Error sending tokens:', err);
-    if (err.message.includes('out of gas')) {
-      return ctx.reply(
-        'Transaction failed due to out of gas. Please try again later with higher gas.'
-      );
-    }
-    return ctx.reply('Failed to send tokens. Please try again later.');
-  }
-}
-
-module.exports = { initWallet, sendTokens, processFaucetRequest };
+module.exports = { initWallet, sendTokens };

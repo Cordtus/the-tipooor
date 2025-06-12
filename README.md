@@ -4,6 +4,8 @@ Telegram faucet bot for Cosmos SDK chains. Runs in [nodeJS](https://nodejs.org/e
 simple to configure and use, provides extensive logging [Default full process + tx logs to console and file] for debugging.  
 Uses tendermint RPC + REST endpoint [one of each] for querying and broadcasting transactions.
 
+Features token decay/recovery system to prevent abuse while allowing legitimate development use.
+
 ## Setup
 
 ### Initial setup, config & development + production mode
@@ -41,10 +43,11 @@ DENOM='uosmo'
 AMOUNT='1000000'
 ALLOWED_GROUP_IDS='group_id,another_group_id'
 WHITELISTED_USER_IDS='user_id,another_user_id'
-FAUCET_TIMEOUT_HOURS='12'
 ```
 
 *ensure the `.gitignore` file in this directory contains `.env` so this file does not get pushed to github when it contains your mnemonic + bot API key!*
+
+*Note:* `FAUCET_TIMEOUT_HOURS` is no longer used - replaced by advanced decay/recovery system
 
 *to-add* – move configurables to dedicated config file
 
@@ -93,29 +96,74 @@ After the bot is set up and configured, add your bot to a Telegram group \[don't
 
 The bot should send tokens and return a response to indicate success or failure, and a block explorer link with the tx hash. Full details can be seen in the console or in the bot logfile.
 
+### New commands
+
+*added in 1.5.0*
+
+Check your current status and eligible token amount:
+
+```text
+/status
+```
+
+This shows your current multiplier, eligible amount, last request time, and recovery information.
+
 *to-add* – block explorer prefix as config parameter
 
 ## Anti-abuse features
 
-### Cooldown Timer
+### Token Decay/Recovery System
 
-In order to prevent abuse of the faucet a simple rate limit is in place. The cooldown period is adjustable by setting the time (in hours) in your `.env` file.
-You can also 'whitelist' users to enable unlimited uses.
+The bot now uses an advanced system that dynamically adjusts token amounts based on usage patterns instead of simple cooldowns.
+
+**How it works:**
+* First request: Users get 100% of the base amount
+* Subsequent requests within 48 hours: Amount halves each time (exponential decay)
+* Recovery period: Amount doubles every 24 hours without requests (up to 100%)
+* Example: 1000 → 500 → 250 → wait 24h → 500 → wait 24h → 1000
+
+**Benefits:**
+* No hard blocks - users can always request tokens
+* Automatic recovery encourages spacing out requests
+* Legitimate developers aren't permanently blocked
+* Heavy users get reduced amounts, light users get full amounts
+
+### Wallet Locking
+
+To prevent address sharing abuse, wallets are now "locked" to the first user who requests tokens to that address.
 
 Conditions:
+* First user to request tokens to an address "owns" that wallet
+* Wallet owner can always request tokens to their locked wallet \[subject to decay system]
+* Other users can request tokens to locked wallets once every 72 hours
+* Cross-user requests are tracked separately per wallet
 
-* The whitelist is first checked; any IDs here bypass all further checks.
-* The cooldown applies to both the wallet *and* the user ID that requested it.
-* User sessions persist through bot restarts or crashes, so spamming will not work.
+### Whitelisted Users
+
+You can still 'whitelist' users to bypass all restrictions entirely.
+
+Conditions:
+* The whitelist is first checked; any IDs here bypass all restrictions
+* Whitelisted users get full amount every time, no decay
+* User sessions persist through bot restarts or crashes
 
 ### 'Vouch' for other users
 
-Sometimes the limits are too low, and can become a barrier to development. To bypass this limit, one user can "vouch" for another using the `/vouch` command.
-To do this, simply reply `/vouch` to the (denied) `/faucet` request message of another user and it will send another serving of tokens to the wallet they requested.
+Users can still "vouch" for others to bypass current restrictions using the `/vouch` command.
+To do this, simply reply `/vouch` to the (denied) `/faucet` request message of another user and it will send tokens to the wallet they requested.
 
 Conditions:
+* The `/vouch` command must be a reply to a message or use `/vouch @username`
+* The user being vouched for must have a pending request (they must have a recently rejected request)
+* The user sending the `/vouch` command cannot vouch for themselves
+* The address in the pending request must be valid
+* Vouching bypasses both decay system and wallet locking
 
-* The `/vouch` command must be a reply to a message or use `/vouch @username`.
-* The user being vouched for must have a pending request.
-* The user sending the `/vouch` command cannot vouch for themselves.
-* The address in the pending request must be valid.
+### Parameters
+
+The decay/recovery system uses these default values \[configurable in sessionManager.js]:
+* **Decay window**: 48 hours \[requests within this window trigger amount reduction]
+* **Recovery period**: 24 hours \[amount doubles every period without requests]
+* **Wallet lock period**: 72 hours \[time other users must wait for locked wallets]
+
+*to-do* – move these parameters to .env configuration

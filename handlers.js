@@ -8,7 +8,7 @@ const {
   checkWalletLock,
   saveSessionData,
   getSession,
-  sessionData
+  isAddressValid
 } = require('./sessionManager');
 const { initWallet, sendTokens } = require('./utils');
 const { botLogger } = require('./logger');
@@ -28,13 +28,13 @@ function registerHandlers(bot) {
     await handleStatusCommand(ctx);
   });
 
+  // Handle address replies when user is awaiting address input
   bot.on('text', async ctx => {
-    // handle address reply with new decay system
     const key = `${ctx.chat.id}:${ctx.from.id}`;
     const userId = ctx.from.id.toString();
     const session = getSession(key).data;
 
-    if (session.awaitingAddress && /^osmo1/.test(ctx.message.text)) {
+    if (session.awaitingAddress && isAddressValid(ctx.message.text)) {
       const address = ctx.message.text.trim();
       session.awaitingAddress = false;
 
@@ -48,7 +48,7 @@ function registerHandlers(bot) {
           );
         }
 
-        // Get the eligible amount using the new decay system
+        // Get the eligible amount using the decay system
         const { amount, multiplier } = calculateEligibleAmount(userId);
 
         const wallet = await initWallet();
@@ -65,16 +65,16 @@ function registerHandlers(bot) {
           saveSessionData();
 
           const explorerLink = res.transactionHash
-          ? `https://celatone.osmosis.zone/${process.env.CHAIN_ID}/txs/${res.transactionHash}`
-          : `https://celatone.osmosis.zone/${process.env.CHAIN_ID}`;
+            ? `https://celatone.osmosis.zone/${process.env.CHAIN_ID}/txs/${res.transactionHash}`
+            : `https://celatone.osmosis.zone/${process.env.CHAIN_ID}`;
 
           const multiplierInfo = multiplier < 1.0
-          ? ` (${(multiplier * 100).toFixed(1)}% of base amount due to recent requests)`
-          : '';
+            ? ` (${(multiplier * 100).toFixed(1)}% of base amount due to recent requests)`
+            : '';
 
           return ctx.reply(
             `Successfully sent ${amount} ${process.env.DENOM} to ${address}${multiplierInfo}. [Details](${explorerLink})`,
-                           { parse_mode: 'Markdown' }
+            { parse_mode: 'Markdown' }
           );
         } else {
           throw new Error('Failed to send tokens');

@@ -5,14 +5,11 @@ const { initWallet, sendTokens } = require('./utils');
 
 const SESSION_DB_PATH = path.join(__dirname, 'session_db.json');
 const WHITELISTED_USER_IDS = (process.env.WHITELISTED_USER_IDS || '')
-.split(',')
-.map(id => id.trim())
-.filter(Boolean);
-const FAUCET_TIMEOUT_HOURS =
-parseInt(process.env.FAUCET_TIMEOUT_HOURS, 10) || 12;
-const FAUCET_TIMEOUT = FAUCET_TIMEOUT_HOURS * 60 * 60 * 1000;
+  .split(',')
+  .map(id => id.trim())
+  .filter(Boolean);
 
-// New constants for decay/recovery system
+// Decay/Recovery System Constants
 const DECAY_WINDOW_HOURS = 48; // Requests within 48 hours trigger decay
 const DECAY_WINDOW = DECAY_WINDOW_HOURS * 60 * 60 * 1000;
 const RECOVERY_PERIOD_HOURS = 24; // Amount doubles every 24 hours of no requests
@@ -54,18 +51,6 @@ function isAddressValid(address) {
   return address.startsWith('osmo1');
 }
 
-function hasUserClaimedRecently(id) {
-  const s = getSession(id).data;
-  return s.lastClaim && Date.now() - s.lastClaim < FAUCET_TIMEOUT;
-}
-
-function hasAddressReceivedRecently(address) {
-  return sessionData.sessions.some(s => {
-    const r = s.data.lastReceived || {};
-    return r[address] && Date.now() - r[address] < FAUCET_TIMEOUT;
-  });
-}
-
 // Calculate current eligible amount based on decay/recovery
 function calculateEligibleAmount(userId) {
   const baseAmount = parseInt(process.env.AMOUNT, 10);
@@ -77,7 +62,7 @@ function calculateEligibleAmount(userId) {
   }
 
   const now = Date.now();
-  const { multiplier, lastRequestTime, lastUpdateTime } = userAmount;
+  const { multiplier, lastRequestTime } = userAmount;
 
   // Calculate recovery based on time since last request
   const timeSinceLastRequest = now - lastRequestTime;
@@ -104,13 +89,13 @@ function updateUserAmount(userId, isActualRequest = true) {
   if (isActualRequest) {
     const { multiplier } = current;
     const timeSinceLastRequest = sessionData.userAmounts[userId]
-    ? now - sessionData.userAmounts[userId].lastRequestTime
-    : Infinity;
+      ? now - sessionData.userAmounts[userId].lastRequestTime
+      : Infinity;
 
     // If request is within decay window, halve the multiplier for next time
     const newMultiplier = timeSinceLastRequest < DECAY_WINDOW
-    ? Math.max(0.0001, multiplier / 2) // Minimum to prevent going to 0
-    : multiplier;
+      ? Math.max(0.0001, multiplier / 2) // Minimum to prevent going to 0
+      : multiplier;
 
     sessionData.userAmounts[userId] = {
       multiplier: newMultiplier,
@@ -163,7 +148,7 @@ function setPendingRequest(id, address) {
   saveSessionData();
 }
 
-// --- Status command ---
+// Status command
 async function handleStatusCommand(ctx) {
   const userId = ctx.from.id.toString();
   const userKey = `${ctx.chat.id}:${ctx.from.id}`;
@@ -201,14 +186,14 @@ async function handleStatusCommand(ctx) {
   return ctx.reply(statusMessage, { parse_mode: 'Markdown' });
 }
 
-// --- Faucet flow ---
-async function handleFaucetCommand(ctx, utils) {
+// Main faucet command handler
+async function handleFaucetCommand(ctx) {
   const userKey = `${ctx.chat.id}:${ctx.from.id}`;
   const userId = ctx.from.id.toString();
   const session = getSession(userKey);
   botLogger.info(`[/faucet] ${userKey}`);
 
-  // parse address
+  // Parse address
   const parts = ctx.message.text.split(' ');
   if (parts.length < 2 || !isAddressValid(parts[1])) {
     session.data.awaitingAddress = true;
@@ -220,78 +205,16 @@ async function handleFaucetCommand(ctx, utils) {
   }
   const address = parts[1];
 
-  // Check wallet locking
-  const lockCheck = checkWalletLock(address, userId);
-  if (!lockCheck.allowed) {
-    setPendingRequest(userKey, address);
-    return ctx.reply(
-      lockCheck.reason + ' Ask someone to reply to your request with "/vouch" to bypass.',
-      { reply_to_message_id: ctx.message.message_id }
-    );
-  }
-
-  // Calculate eligible amount
-  const { amount, multiplier } = calculateEligibleAmount(userId);
-
-  // cooldown checks (skip for whitelisted users)
-  if (!WHITELISTED_USER_IDS.includes(userId)) {
-    if (hasUserClaimedRecently(userKey)) {
-      setPendingRequest(userKey, address);
-      return ctx.reply(
-        `Already claimed in last ${FAUCET_TIMEOUT_HOURS}h. Ask someone to reply to your original request message with "/vouch" to bypass.`,
-        { reply_to_message_id: ctx.message.message_id }
-      );
-    }
-    if (hasAddressReceivedRecently(address)) {
-      setPendingRequest(userKey, address);
-      return ctx.reply(
-        `Address used in last ${FAUCET_TIMEOUT_HOURS}h. Ask someone to reply to your original request message with "/vouch" to bypass.`,
-        { reply_to_message_id: ctx.message.message_id }
-      );
-    }
-  }
-
-  // process request
-  try {
-    const wallet = await initWallet();
-    const res = await sendTokens(wallet, address, amount); // Pass custom amount
-    if (res.success) {
-      // Update user amount tracking
-      updateUserAmount(userId, true);
-
-      session.data.lastClaim = Date.now();
-      session.data.lastReceived = session.data.lastReceived || {};
-      session.data.lastReceived[address] = Date.now();
-      session.data.pendingRequest = false;
-      saveSessionData();
-
-      const link = res.transactionHash
-      ? `https://celatone.osmosis.zone/${process.env.CHAIN_ID}/txs/${res.transactionHash}`
-      : `https://celatone.osmosis.zone/${process.env.CHAIN_ID}`;
-
-      const multiplierInfo = multiplier < 1.0
-      ? ` (${(multiplier * 100).toFixed(1)}% of base amount due to recent requests)`
-      : '';
-
-      return ctx.reply(
-        `Sent ${amount} ${process.env.DENOM} to ${address}${multiplierInfo}. [Details](${link})`,
-                       { parse_mode: 'Markdown' }
-      );
-    }
-    throw new Error('tx failed');
-  } catch (err) {
-    botLogger.error('Faucet error', err);
-    return ctx.reply('Failed to send tokens. Try again later.');
-  }
+  return await processTokenRequest(ctx, userId, address, userKey, 'faucet');
 }
 
-// --- Vouch flow ---
-async function handleVouchCommand(ctx, utils) {
+// Vouch command handler
+async function handleVouchCommand(ctx) {
   const userKey = `${ctx.chat.id}:${ctx.from.id}`;
   const vouchingUserId = ctx.from.id.toString();
   botLogger.info(`[/vouch] ${userKey}`);
 
-  // resolve target
+  // Resolve target user
   let targetId, targetName;
   if (ctx.message.reply_to_message) {
     const replied = ctx.message.reply_to_message;
@@ -301,15 +224,9 @@ async function handleVouchCommand(ctx, utils) {
   } else {
     const mention = ctx.message.entities?.find(e => e.type === 'mention');
     if (!mention) {
-      return ctx.reply(
-        'Reply or `/vouch @username` to vouch.',
-        { parse_mode: 'Markdown' }
-      );
+      return ctx.reply('Reply or `/vouch @username` to vouch.', { parse_mode: 'Markdown' });
     }
-    const name = ctx.message.text.substring(
-      mention.offset + 1,
-      mention.offset + mention.length
-    );
+    const name = ctx.message.text.substring(mention.offset + 1, mention.offset + mention.length);
     try {
       const member = await ctx.telegram.getChatMember(ctx.chat.id, `@${name}`);
       targetId = member.user.id;
@@ -321,12 +238,12 @@ async function handleVouchCommand(ctx, utils) {
 
   const targetUserId = targetId.toString();
 
-  // no self-vouch
+  // No self-vouch
   if (targetUserId === vouchingUserId) {
     return ctx.reply('You cannot vouch for yourself.');
   }
 
-  // lookup session
+  // Lookup target session
   const targetKey = `${ctx.chat.id}:${targetId}`;
   const session = getSession(targetKey).data;
   if (!session.pendingRequest) {
@@ -344,40 +261,82 @@ async function handleVouchCommand(ctx, utils) {
     return ctx.reply(`Cannot vouch: ${lockCheck.reason}`);
   }
 
-  // Calculate amount for the original requester
-  const { amount, multiplier } = calculateEligibleAmount(targetUserId);
+  return await processTokenRequest(ctx, targetUserId, addr, targetKey, 'vouch', targetName);
+}
 
-  // execute vouch
+// Unified token request processing
+async function processTokenRequest(ctx, userId, address, userKey, requestType, targetName = null) {
+  // Check wallet locking
+  const lockCheck = checkWalletLock(address, userId);
+  if (!lockCheck.allowed) {
+    if (requestType === 'faucet') {
+      setPendingRequest(userKey, address);
+      return ctx.reply(
+        lockCheck.reason + ' Ask someone to reply to your request with "/vouch" to bypass.',
+        { reply_to_message_id: ctx.message.message_id }
+      );
+    } else {
+      return ctx.reply(`Cannot vouch: ${lockCheck.reason}`);
+    }
+  }
+
+  // Calculate eligible amount
+  const { amount, multiplier } = calculateEligibleAmount(userId);
+
+  // For non-whitelisted users doing direct faucet requests (not vouch), check if they need to wait
+  if (requestType === 'faucet' && !WHITELISTED_USER_IDS.includes(userId)) {
+    const userAmount = sessionData.userAmounts[userId];
+    if (userAmount && userAmount.lastRequestTime) {
+      const timeSinceLastRequest = Date.now() - userAmount.lastRequestTime;
+      if (timeSinceLastRequest < DECAY_WINDOW) {
+        setPendingRequest(userKey, address);
+        return ctx.reply(
+          `You can request again, but your amount will be reduced. Current amount: ${amount} ${process.env.DENOM}. Ask someone to reply with "/vouch" to bypass decay.`,
+          { reply_to_message_id: ctx.message.message_id }
+        );
+      }
+    }
+  }
+
+  // Process the token request
   try {
     const wallet = await initWallet();
-    const res = await sendTokens(wallet, addr, amount); // Pass custom amount
+    const res = await sendTokens(wallet, address, amount);
+    
     if (res.success) {
-      // Update the target user's amount tracking
-      updateUserAmount(targetUserId, true);
+      // Update user amount tracking
+      updateUserAmount(userId, true);
 
-      const s = getSession(targetKey).data;
-      s.lastClaim = Date.now();
-      s.lastReceived = s.lastReceived || {};
-      s.lastReceived[addr] = Date.now();
-      s.pendingRequest = false;
+      // Update session data
+      const session = getSession(userKey);
+      session.data.lastClaim = Date.now();
+      session.data.lastReceived = session.data.lastReceived || {};
+      session.data.lastReceived[address] = Date.now();
+      session.data.pendingRequest = false;
       saveSessionData();
 
       const link = res.transactionHash
-      ? `https://celatone.osmosis.zone/${process.env.CHAIN_ID}/txs/${res.transactionHash}`
-      : `https://celatone.osmosis.zone/${process.env.CHAIN_ID}`;
+        ? `https://celatone.osmosis.zone/${process.env.CHAIN_ID}/txs/${res.transactionHash}`
+        : `https://celatone.osmosis.zone/${process.env.CHAIN_ID}`;
 
       const multiplierInfo = multiplier < 1.0
-      ? ` (${(multiplier * 100).toFixed(1)}% of base amount due to recent requests)`
-      : '';
+        ? ` (${(multiplier * 100).toFixed(1)}% of base amount due to recent requests)`
+        : '';
+
+      const prefix = requestType === 'vouch' ? `Vouched: sent` : `Sent`;
+      const recipient = targetName ? ` for @${targetName}` : '';
 
       return ctx.reply(
-        `Vouched: sent ${amount} ${process.env.DENOM} to ${addr}${multiplierInfo}. [Details](${link})`,
-                       { parse_mode: 'Markdown' }
+        `${prefix} ${amount} ${process.env.DENOM} to ${address}${recipient}${multiplierInfo}. [Details](${link})`,
+        { parse_mode: 'Markdown' }
       );
     }
-    throw new Error('tx failed');
+    throw new Error('Transaction failed');
   } catch (err) {
-    botLogger.error('Vouch error', err);
+    botLogger.error(`${requestType} error:`, err);
+    if (err.message.includes('out of gas')) {
+      return ctx.reply('Transaction failed due to out of gas. Please try again later with higher gas.');
+    }
     return ctx.reply('Failed to send tokens. Try again later.');
   }
 }
@@ -392,5 +351,6 @@ module.exports = {
   updateUserAmount,
   checkWalletLock,
   getSession,
-  get sessionData() { return sessionData; }, // Getter for sessionData
+  isAddressValid,
+  get sessionData() { return sessionData; }
 };

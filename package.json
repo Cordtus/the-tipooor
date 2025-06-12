@@ -1,12 +1,11 @@
 {
   "name": "the-tipooor",
-  "version": "1.1.0",
-  "description": "Simple Faucet Telegram Bot for Cosmos-SDK chains",
+  "version": "1.5.0",
+  "description": "Telegram Faucet Bot with Token Allowance Decay/Recovery System for Cosmos-SDK chains",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
-    "dev": "nodemon --exec 'node -r dotenv/config' bot.js",
-    "build": "echo 'No build step needed for JavaScript'"
+    "dev": "nodemon bot.js"
   },
   "dependencies": {
     "@cosmjs/proto-signing": "^0.32.3",
@@ -19,6 +18,14 @@
   "devDependencies": {
     "nodemon": "^3.1.2"
   },
-  "author": "Your Name",
-  "license": "ISC"
+  "author": "Cordt Hanson",
+  "license": "MIT",
+  "keywords": [
+    "telegram",
+    "bot",
+    "faucet",
+    "cosmos",
+    "osmosis",
+    "blockchain"
+  ]
 }
