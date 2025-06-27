@@ -11,3 +11,4 @@ dist/
 data/
 nodemon.json
 session_db.json
+.claude/
