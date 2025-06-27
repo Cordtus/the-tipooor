@@ -117,12 +117,14 @@ This shows your current multiplier, eligible amount, last request time, and reco
 The bot now uses an advanced system that dynamically adjusts token amounts based on usage patterns instead of simple cooldowns.
 
 **How it works:**
+
 * First request: Users get 100% of the base amount
 * Subsequent requests within 48 hours: Amount halves each time (exponential decay)
 * Recovery period: Amount doubles every 24 hours without requests (up to 100%)
 * Example: 1000 → 500 → 250 → wait 24h → 500 → wait 24h → 1000
 
 **Benefits:**
+
 * No hard blocks - users can always request tokens
 * Automatic recovery encourages spacing out requests
 * Legitimate developers aren't permanently blocked
@@ -133,6 +135,7 @@ The bot now uses an advanced system that dynamically adjusts token amounts based
 To prevent address sharing abuse, wallets are now "locked" to the first user who requests tokens to that address.
 
 Conditions:
+
 * First user to request tokens to an address "owns" that wallet
 * Wallet owner can always request tokens to their locked wallet \[subject to decay system]
 * Other users can request tokens to locked wallets once every 72 hours
@@ -143,6 +146,7 @@ Conditions:
 You can still 'whitelist' users to bypass all restrictions entirely.
 
 Conditions:
+
 * The whitelist is first checked; any IDs here bypass all restrictions
 * Whitelisted users get full amount every time, no decay
 * User sessions persist through bot restarts or crashes
@@ -153,6 +157,7 @@ Users can still "vouch" for others to bypass current restrictions using the `/vo
 To do this, simply reply `/vouch` to the (denied) `/faucet` request message of another user and it will send tokens to the wallet they requested.
 
 Conditions:
+
 * The `/vouch` command must be a reply to a message or use `/vouch @username`
 * The user being vouched for must have a pending request (they must have a recently rejected request)
 * The user sending the `/vouch` command cannot vouch for themselves
@@ -162,6 +167,7 @@ Conditions:
 ### Parameters
 
 The decay/recovery system uses these default values \[configurable in sessionManager.js]:
+
 * **Decay window**: 48 hours \[requests within this window trigger amount reduction]
 * **Recovery period**: 24 hours \[amount doubles every period without requests]
 * **Wallet lock period**: 72 hours \[time other users must wait for locked wallets]
