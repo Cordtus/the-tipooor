@@ -16,6 +16,8 @@ const RECOVERY_PERIOD_HOURS = 24; // Amount doubles every 24 hours of no request
 const RECOVERY_PERIOD = RECOVERY_PERIOD_HOURS * 60 * 60 * 1000;
 const WALLET_LOCK_HOURS = 72; // Other users can only request locked wallets once per 72 hours
 const WALLET_LOCK_PERIOD = WALLET_LOCK_HOURS * 60 * 60 * 1000;
+const RATE_LIMIT_HOURS = 1; // Minimum time between requests
+const RATE_LIMIT_PERIOD = RATE_LIMIT_HOURS * 60 * 60 * 1000;
 
 let sessionData = {
   sessions: [],
@@ -179,6 +181,7 @@ async function handleStatusCommand(ctx) {
   }
 
   statusMessage += `\n💡 **How it works:**\n`;
+  statusMessage += `• Rate limit: ${RATE_LIMIT_HOURS}h minimum between requests\n`;
   statusMessage += `• Requesting within ${DECAY_WINDOW_HOURS}h halves your next amount\n`;
   statusMessage += `• Amount doubles every ${RECOVERY_PERIOD_HOURS}h without requests\n`;
   statusMessage += `• Wallets get locked to first user for ${WALLET_LOCK_HOURS}h per other user`;
@@ -283,11 +286,22 @@ async function processTokenRequest(ctx, userId, address, userKey, requestType, t
   // Calculate eligible amount
   const { amount, multiplier } = calculateEligibleAmount(userId);
 
-  // For non-whitelisted users doing direct faucet requests (not vouch), check if they need to wait
+  // Check rate limit for non-whitelisted users
   if (requestType === 'faucet' && !WHITELISTED_USER_IDS.includes(userId)) {
     const userAmount = sessionData.userAmounts[userId];
     if (userAmount && userAmount.lastRequestTime) {
       const timeSinceLastRequest = Date.now() - userAmount.lastRequestTime;
+      
+      // Enforce hard rate limit
+      if (timeSinceLastRequest < RATE_LIMIT_PERIOD) {
+        const remainingMinutes = Math.ceil((RATE_LIMIT_PERIOD - timeSinceLastRequest) / (60 * 1000));
+        return ctx.reply(
+          `Rate limit: You must wait ${remainingMinutes} minutes before requesting again.`,
+          { reply_to_message_id: ctx.message.message_id }
+        );
+      }
+      
+      // Warn about decay but allow request
       if (timeSinceLastRequest < DECAY_WINDOW) {
         setPendingRequest(userKey, address);
         return ctx.reply(
